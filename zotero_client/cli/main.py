@@ -26,15 +26,22 @@ def configure_cli(args):
     Interactively configure Zotero API key and user ID.
     """
     print("--- Zotero Client Configuration ---")
-    api_key = input("Enter your Zotero API Key: ")
-    user_id = input("Enter your Zotero User ID: ")
+    api_key = None
+    user_id = None
+    try:
+        api_key = input("Enter your Zotero API Key: ")
+        user_id = input("Enter your Zotero User ID: ")
+    except KeyboardInterrupt:
+        print("\nConfiguration cancelled.")
+        sys.exit(0)
 
-    env_path = '.env'
-    set_key(env_path, 'ZOTERO_API_KEY', api_key)
-    set_key(env_path, 'ZOTERO_USER_ID', user_id)
+    if api_key is not None and user_id is not None:
+        env_path = '.env'
+        set_key(env_path, 'ZOTERO_API_KEY', api_key)
+        set_key(env_path, 'ZOTERO_USER_ID', user_id)
 
-    print(f"Configuration saved to {env_path}")
-    print("Please restart your shell or run 'load_dotenv()' if you are in an interactive session.")
+        print(f"Configuration saved to {env_path}")
+        print("Please restart your shell or run 'load_dotenv()' if you are in an interactive session.")
 
 
 def list_items(args):
