@@ -281,6 +281,15 @@ cl tags
 cl tags --item-id ABC123XYZ
 ```
 
+### `cl configure`
+
+Interactively configure Zotero API credentials.
+
+**Examples:**
+```bash
+cl configure
+```
+
 ## Response Format
 
 ### Collection Response

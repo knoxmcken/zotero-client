@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 import json
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 from zotero_client.api.client import ZoteroClient
 
 
@@ -19,6 +19,22 @@ def load_config():
         sys.exit(1)
     
     return api_key, user_id
+
+
+def configure_cli(args):
+    """
+    Interactively configure Zotero API key and user ID.
+    """
+    print("--- Zotero Client Configuration ---")
+    api_key = input("Enter your Zotero API Key: ")
+    user_id = input("Enter your Zotero User ID: ")
+
+    env_path = '.env'
+    set_key(env_path, 'ZOTERO_API_KEY', api_key)
+    set_key(env_path, 'ZOTERO_USER_ID', user_id)
+
+    print(f"Configuration saved to {env_path}")
+    print("Please restart your shell or run 'load_dotenv()' if you are in an interactive session.")
 
 
 def list_items(args):
@@ -86,7 +102,8 @@ def delete_item_cli(args):
 
 
 def list_collections(args):
-    """List collections from Zotero library."""
+    """
+    List collections from Zotero library."""
     api_key, user_id = load_config()
     client = ZoteroClient(api_key, user_id)
     
@@ -221,7 +238,7 @@ def main():
         '--data',
         type=str,
         required=True,
-        help='JSON string of item data (e.g., '''{"itemType": "book", "title": "My Book"}''')'
+        help='JSON string of item data (e.g., "{\"itemType\": \"book\", \"title\": \"My Book\"}")'
     )
     create_item_parser.set_defaults(func=create_item_cli)
 
@@ -277,7 +294,7 @@ def main():
         '--data',
         type=str,
         required=True,
-        help='JSON string of collection data (e.g., '''{"name": "My Collection"}''')'
+        help='JSON string of collection data (e.g., "{\"name\": \"My Collection\"}")'
     )
     create_collection_parser.set_defaults(func=create_collection_cli)
 
@@ -318,6 +335,68 @@ def main():
         help='The version of the collection to ensure no conflicts'
     )
     delete_collection_parser.set_defaults(func=delete_collection_cli)
+
+    # Tags command
+    tags_parser = subparsers.add_parser('tags', help='Manage Zotero tags')
+    tags_subparsers = tags_parser.add_subparsers(dest='tag_command', help='Tag commands')
+
+    # List tags sub-command
+    list_tags_parser = tags_subparsers.add_parser('list', help='List tags from library')
+    list_tags_parser.add_argument(
+        '--item-id',
+        type=str,
+        default=None,
+        help='Optional: Filter tags by a specific item ID'
+    )
+    list_tags_parser.set_defaults(func=list_tags)
+
+    # Add tags to item sub-command
+    add_tags_parser = tags_subparsers.add_parser('add', help='Add tags to an item')
+    add_tags_parser.add_argument(
+        '--item-id',
+        type=str,
+        required=True,
+        help='The key of the item to add tags to'
+    )
+    add_tags_parser.add_argument(
+        '--tags',
+        type=str,
+        required=True,
+        help='Comma-separated list of tags to add (e.g., "tag1,tag2")'
+    )
+    add_tags_parser.add_argument(
+        '--version',
+        type=int,
+        default=None,
+        help='The version of the item to ensure no conflicts'
+    )
+    add_tags_parser.set_defaults(func=add_tags_to_item_cli)
+
+    # Remove tags from item sub-command
+    remove_tags_parser = tags_subparsers.add_parser('remove', help='Remove tags from an item')
+    remove_tags_parser.add_argument(
+        '--item-id',
+        type=str,
+        required=True,
+        help='The key of the item to remove tags from'
+    )
+    remove_tags_parser.add_argument(
+        '--tags',
+        type=str,
+        required=True,
+        help='Comma-separated list of tags to remove (e.g., "tag1,tag2")'
+    )
+    remove_tags_parser.add_argument(
+        '--version',
+        type=int,
+        default=None,
+        help='The version of the item to ensure no conflicts'
+    )
+    remove_tags_parser.set_defaults(func=remove_tags_from_item_cli)
+
+    # Configure command
+    configure_parser = subparsers.add_parser('configure', help='Interactively configure Zotero API credentials')
+    configure_parser.set_defaults(func=configure_cli)
     
     args = parser.parse_args()
     
@@ -332,9 +411,9 @@ def main():
     if args.command == 'collections' and not args.collection_command:
         collections_parser.print_help()
         sys.exit(1)
+
+    if args.command == 'tags' and not args.tag_command:
+        tags_parser.print_help()
+        sys.exit(1)
     
     args.func(args)
-
-
-if __name__ == "__main__":
-    main()
