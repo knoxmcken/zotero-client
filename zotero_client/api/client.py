@@ -26,12 +26,17 @@ class ZoteroClient:
         self.library_type = library_type
         self.headers = {'Zotero-API-Key': self.api_key}
     
-    def get_items(self, limit: Optional[int] = None) -> List[Item]:
+    def get_items(self, limit: Optional[int] = None, q: Optional[str] = None, qmode: Optional[str] = None, item_type: Optional[str] = None, tag: Optional[str] = None, include_trashed: Optional[bool] = None) -> List[Item]:
         """
-        Retrieve items from the Zotero library.
+        Retrieve items from the Zotero library with advanced search capabilities.
         
         Args:
-            limit: Maximum number of items to retrieve
+            limit: Maximum number of items to retrieve.
+            q: Search query for quick search across titles and creator fields.
+            qmode: Query mode for 'q' parameter (e.g., 'everything' for full-text search).
+            item_type: Filter by item type (e.g., 'book', 'journalArticle').
+            tag: Filter by tag (supports boolean search syntax).
+            include_trashed: If True, include trashed items in the results.
             
         Returns:
             List of Item objects
@@ -40,6 +45,16 @@ class ZoteroClient:
         params = {}
         if limit:
             params['limit'] = limit
+        if q:
+            params['q'] = q
+        if qmode:
+            params['qmode'] = qmode
+        if item_type:
+            params['itemType'] = item_type
+        if tag:
+            params['tag'] = tag
+        if include_trashed:
+            params['includeTrashed'] = 1
             
         response = requests.get(url, headers=self.headers, params=params)
         response.raise_for_status()

@@ -87,3 +87,49 @@ def test_delete_item(mock_delete, mock_client):
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{item_id}',
         headers=expected_headers
     )
+
+@patch('requests.get')
+def test_get_items_advanced_search(mock_get, mock_client):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [{
+        "key": "SEARCHITEM1",
+        "version": 1,
+        "data": {
+            "key": "SEARCHITEM1",
+            "itemType": "journalArticle",
+            "title": "Search Result Article",
+            "creators": [],
+            "date": "2020",
+            "url": ""
+        }
+    }]
+    mock_get.return_value = mock_response
+
+    # Test with various search parameters
+    items = mock_client.get_items(
+        limit=5,
+        q="search term",
+        qmode="everything",
+        item_type="journalArticle",
+        tag="biology",
+        include_trashed=True
+    )
+
+    expected_params = {
+        'limit': 5,
+        'q': "search term",
+        'qmode': "everything",
+        'itemType': "journalArticle",
+        'tag': "biology",
+        'includeTrashed': 1
+    }
+
+    mock_get.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
+        headers=mock_client.headers,
+        params=expected_params
+    )
+    assert len(items) == 1
+    assert items[0].title == "Search Result Article"
+    assert items[0].item_type == "journalArticle"

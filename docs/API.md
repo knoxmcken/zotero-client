@@ -18,19 +18,24 @@ client = ZoteroClient(
 
 ### Methods
 
-#### `get_items(limit: Optional[int] = None) -> List[Item]`
+#### `get_items(limit: Optional[int] = None, q: Optional[str] = None, qmode: Optional[str] = None, item_type: Optional[str] = None, tag: Optional[str] = None, include_trashed: Optional[bool] = None) -> List[Item]`
 
-Retrieve items from the Zotero library.
+Retrieve items from the Zotero library with advanced search capabilities.
 
 **Parameters:**
-- `limit` (int, optional): Maximum number of items to retrieve
+- `limit` (int, optional): Maximum number of items to retrieve.
+- `q` (str, optional): Search query for quick search across titles and creator fields.
+- `qmode` (str, optional): Query mode for 'q' parameter (e.g., 'everything' for full-text search).
+- `item_type` (str, optional): Filter by item type (e.g., 'book', 'journalArticle').
+- `tag` (str, optional): Filter by tag (supports boolean search syntax).
+- `include_trashed` (bool, optional): If True, include trashed items in the results.
 
 **Returns:**
 - List of Item objects
 
 **Example:**
 ```python
-items = client.get_items(limit=10)
+items = client.get_items(limit=10, q="test", qmode="everything", item_type="journalArticle", tag="research", include_trashed=True)
 for item in items:
     print(item.title)
 ```
@@ -248,15 +253,23 @@ print(f"Removed tags from item: {item_to_untag.key}")
 
 ### `cl items`
 
-List items from your Zotero library.
+List items from your Zotero library with optional search filters.
 
 **Options:**
-- `--limit`: Maximum number of items to retrieve
+- `--limit` (int): Maximum number of items to retrieve.
+- `--query` (str): Search query for quick search across titles and creator fields.
+- `--qmode` (str): Query mode for `--query` parameter (e.g., "everything" for full-text search).
+- `--item-type` (str): Filter by item type (e.g., "book", "journalArticle").
+- `--tag` (str): Filter by tag (supports boolean search syntax).
+- `--include-trashed`: Include trashed items in the results.
 
 **Examples:**
 ```bash
 cl items
 cl items --limit 5
+cl items --query "biology" --qmode "everything"
+cl items --item-type "journalArticle" --tag "genetics"
+cl items --include-trashed
 ```
 
 ### `cl collections`

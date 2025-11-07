@@ -45,11 +45,20 @@ def configure_cli(args):
 
 
 def list_items(args):
-    """List items from Zotero library."""
+    """
+    List items from Zotero library with optional search filters.
+    """
     api_key, user_id = load_config()
     client = ZoteroClient(api_key, user_id)
     
-    items = client.get_items(limit=args.limit)
+    items = client.get_items(
+        limit=args.limit,
+        q=args.query,
+        qmode=args.qmode,
+        item_type=args.item_type,
+        tag=args.tag,
+        include_trashed=args.include_trashed
+    )
     
     for item in items:
         print(f"[{item.item_type}] {item.title}")
