@@ -126,6 +126,28 @@ class ZoteroClient:
         response.raise_for_status()
         return None
     
+    def get_attachments(self, item_id: Optional[str] = None, limit: Optional[int] = None) -> List[Item]:
+        """
+        Retrieve attachment items from the Zotero library.
+
+        Args:
+            item_id: Optional. The ID of the parent item to retrieve attachments for.
+            limit: Maximum number of attachments to retrieve.
+
+        Returns:
+            List of Item objects (representing attachments).
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
+        params = {'itemType': 'attachment'}
+        if item_id:
+            params['parentItem'] = item_id
+        if limit:
+            params['limit'] = limit
+
+        response = requests.get(url, headers=self.headers, params=params)
+        response.raise_for_status()
+        return [Item.from_api_response(item_data) for item_data in response.json()]
+    
     def get_collections(self) -> List[Collection]:
         """
         Retrieve collections from the Zotero library.

@@ -123,6 +123,28 @@ client.delete_item(item_to_delete.key, item_to_delete.version)
 print(f"Deleted item with key: {item_to_delete.key}")
 ```
 
+#### `get_attachments(item_id: Optional[str] = None, limit: Optional[int] = None) -> List[Item]`
+
+Retrieve attachment items from the Zotero library.
+
+**Parameters:**
+- `item_id` (str, optional): The ID of the parent item to retrieve attachments for.
+- `limit` (int, optional): Maximum number of attachments to retrieve.
+
+**Returns:**
+- List of Item objects (representing attachments).
+
+**Example:**
+```python
+attachments = client.get_attachments(limit=5)
+for attachment in attachments:
+    print(f"Attachment: {attachment.title} (Parent: {attachment.parent_item})")
+
+item_attachments = client.get_attachments(item_id='PARENTITEM123')
+for attachment in item_attachments:
+    print(f"Attachment: {attachment.title}")
+```
+
 #### `get_collections() -> List[Collection]`
 
 Retrieve collections from the Zotero library.
@@ -301,6 +323,24 @@ Interactively configure Zotero API credentials.
 **Examples:**
 ```bash
 cl configure
+```
+
+### `cl attachments`
+
+Manage Zotero attachments.
+
+**Commands:**
+- `list`: List attachments from your Zotero library.
+
+**Options for `list`:**
+- `--item-id` (str, optional): Filter attachments by a specific parent item ID.
+- `--limit` (int, optional): Maximum number of attachments to retrieve.
+
+**Examples:**
+```bash
+cl attachments list
+cl attachments list --item-id PARENTITEM123
+cl attachments list --limit 5
 ```
 
 ## Response Format

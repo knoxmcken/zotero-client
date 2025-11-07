@@ -133,3 +133,48 @@ def test_get_items_advanced_search(mock_get, mock_client):
     assert len(items) == 1
     assert items[0].title == "Search Result Article"
     assert items[0].item_type == "journalArticle"
+
+@patch('requests.get')
+def test_get_attachments(mock_get, mock_client):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [{
+        "key": "ATTACHMENT1",
+        "version": 1,
+        "data": {
+            "key": "ATTACHMENT1",
+            "itemType": "attachment",
+            "title": "Test Attachment",
+            "parentItem": "PARENTITEM123",
+            "creators": [],
+            "date": "2024",
+            "url": ""
+        }
+    }]
+    mock_get.return_value = mock_response
+
+    # Test getting all attachments
+    attachments = mock_client.get_attachments(limit=1)
+
+    expected_params_all = {'itemType': 'attachment', 'limit': 1}
+    mock_get.assert_called_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
+        headers=mock_client.headers,
+        params=expected_params_all
+    )
+    assert len(attachments) == 1
+    assert attachments[0].title == "Test Attachment"
+    assert attachments[0].item_type == "attachment"
+
+    # Test getting attachments for a specific parent item
+    mock_get.reset_mock()
+    attachments_for_item = mock_client.get_attachments(item_id="PARENTITEM123")
+
+    expected_params_item = {'itemType': 'attachment', 'parentItem': 'PARENTITEM123'}
+    mock_get.assert_called_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
+        headers=mock_client.headers,
+        params=expected_params_item
+    )
+    assert len(attachments_for_item) == 1
+    assert attachments_for_item[0].parent_item == "PARENTITEM123"

@@ -117,6 +117,20 @@ def delete_item_cli(args):
         sys.exit(1)
 
 
+def list_attachments(args):
+    """
+    List attachments from Zotero library, optionally filtered by parent item.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    attachments = client.get_attachments(item_id=args.item_id, limit=args.limit)
+
+    for attachment in attachments:
+        parent_item_key = attachment.parent_item if hasattr(attachment, 'parent_item') else 'N/A'
+        print(f"[Attachment] {attachment.title} (Key: {attachment.key}, Parent: {parent_item_key})")
+
+
 def list_collections(args):
     """
     List collections from Zotero library."""
@@ -413,6 +427,26 @@ def main():
     # Configure command
     configure_parser = subparsers.add_parser('configure', help='Interactively configure Zotero API credentials')
     configure_parser.set_defaults(func=configure_cli)
+
+    # Attachments command
+    attachments_parser = subparsers.add_parser('attachments', help='Manage Zotero attachments')
+    attachments_subparsers = attachments_parser.add_subparsers(dest='attachment_command', help='Attachment commands')
+
+    # List attachments sub-command
+    list_attachments_parser = attachments_subparsers.add_parser('list', help='List attachments from library')
+    list_attachments_parser.add_argument(
+        '--item-id',
+        type=str,
+        default=None,
+        help='Optional: Filter attachments by a specific parent item ID'
+    )
+    list_attachments_parser.add_argument(
+        '--limit',
+        type=int,
+        default=None,
+        help='Maximum number of attachments to retrieve'
+    )
+    list_attachments_parser.set_defaults(func=list_attachments)
     
     args = parser.parse_args()
     
@@ -430,6 +464,10 @@ def main():
 
     if args.command == 'tags' and not args.tag_command:
         tags_parser.print_help()
+        sys.exit(1)
+
+    if args.command == 'attachments' and not args.attachment_command:
+        attachments_parser.print_help()
         sys.exit(1)
     
     args.func(args)

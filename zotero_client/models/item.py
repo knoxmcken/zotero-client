@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 @dataclass
 class Item:
@@ -10,6 +10,7 @@ class Item:
     date: str
     url: str
     version: int
+    parent_item: Optional[str] = None
 
     @classmethod
     def from_api_response(cls, data: Dict[str, Any]) -> 'Item':
@@ -22,5 +23,6 @@ class Item:
             creators=item_data.get('creators', []),
             date=item_data.get('date', ''),
             url=item_data.get('url', ''),
-            version=data.get('version', 0) # Version is at the top level of the response
+            version=data.get('version', 0), # Version is at the top level of the response
+            parent_item=item_data.get('parentItem', None)
         )
