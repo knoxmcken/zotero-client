@@ -3,6 +3,7 @@
 import requests
 from typing import List, Dict, Optional, Any
 from zotero_client.models.item import Item
+from zotero_client.models.collection import Collection
 
 
 class ZoteroClient:
@@ -109,14 +110,65 @@ class ZoteroClient:
         response.raise_for_status()
         return None
     
-    def get_collections(self) -> List[Dict]:
+    def get_collections(self) -> List[Collection]:
         """
         Retrieve collections from the Zotero library.
         
         Returns:
-            List of collection dictionaries
+            List of Collection objects
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections'
         response = requests.get(url, headers=self.headers)
         response.raise_for_status()
-        return response.json()
+        return [Collection.from_api_response(collection_data) for collection_data in response.json()]
+
+    def create_collection(self, collection_data: Dict[str, Any]) -> Collection:
+        """
+        Create a new collection in the Zotero library.
+
+        Args:
+            collection_data: A dictionary containing the collection's data.
+
+        Returns:
+            The created Collection object.
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections'
+        response = requests.post(url, headers=self.headers, json=[collection_data])
+        response.raise_for_status()
+        return Collection.from_api_response(response.json()[0])
+
+    def update_collection(self, collection_id: str, collection_data: Dict[str, Any], if_unmodified_since_version: Optional[int] = None) -> Collection:
+        """
+        Update an existing collection in the Zotero library.
+
+        Args:
+            collection_id: The ID of the collection to update.
+            collection_data: A dictionary containing the updated collection's data.
+            if_unmodified_since_version: Optional. The version of the collection to ensure no conflicts.
+
+        Returns:
+            The updated Collection object.
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections/{collection_id}'
+        headers = self.headers.copy()
+        if if_unmodified_since_version:
+            headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
+        response = requests.put(url, headers=headers, json=collection_data)
+        response.raise_for_status()
+        return Collection.from_api_response(response.json()[0])
+
+    def delete_collection(self, collection_id: str, if_unmodified_since_version: Optional[int] = None) -> None:
+        """
+        Delete a collection from the Zotero library.
+
+        Args:
+            collection_id: The ID of the collection to delete.
+            if_unmodified_since_version: Optional. The version of the collection to ensure no conflicts.
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections/{collection_id}'
+        headers = self.headers.copy()
+        if if_unmodified_since_version:
+            headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        return None

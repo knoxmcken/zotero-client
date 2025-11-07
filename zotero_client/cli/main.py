@@ -93,10 +93,60 @@ def list_collections(args):
     collections = client.get_collections()
     
     for collection in collections:
-        data = collection.get('data', {})
-        name = data.get('name', 'Unnamed')
-        key = data.get('key', '')
-        print(f"{name} (key: {key})")
+        print(f"{collection.name} (key: {collection.key})")
+
+
+def create_collection_cli(args):
+    """
+    Create a new collection in the Zotero library via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        collection_data = json.loads(args.data)
+        created_collection = client.create_collection(collection_data)
+        print(f"Successfully created collection: {created_collection.name} (Key: {created_collection.key})")
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON data provided for collection creation.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error creating collection: {e}")
+        sys.exit(1)
+
+
+def update_collection_cli(args):
+    """
+    Update an existing collection in the Zotero library via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        collection_data = json.loads(args.data)
+        updated_collection = client.update_collection(args.collection_id, collection_data, args.version)
+        print(f"Successfully updated collection: {updated_collection.name} (Key: {updated_collection.key}, Version: {updated_collection.version})")
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON data provided for collection update.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error updating collection: {e}")
+        sys.exit(1)
+
+
+def delete_collection_cli(args):
+    """
+    Delete a collection from the Zotero library via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        client.delete_collection(args.collection_id, args.version)
+        print(f"Successfully deleted collection with key: {args.collection_id}")
+    except Exception as e:
+        print(f"Error deleting collection: {e}")
+        sys.exit(1)
 
 
 def main():
@@ -169,8 +219,60 @@ def main():
     delete_item_parser.set_defaults(func=delete_item_cli)
     
     # List collections command
-    collections_parser = subparsers.add_parser('collections', help='List collections')
-    collections_parser.set_defaults(func=list_collections)
+    collections_parser = subparsers.add_parser('collections', help='Manage Zotero collections')
+    collections_subparsers = collections_parser.add_subparsers(dest='collection_command', help='Collection commands')
+
+    # List collections sub-command
+    list_collections_parser = collections_subparsers.add_parser('list', help='List collections from library')
+    list_collections_parser.set_defaults(func=list_collections)
+
+    # Create collection sub-command
+    create_collection_parser = collections_subparsers.add_parser('create', help='Create a new collection')
+    create_collection_parser.add_argument(
+        '--data',
+        type=str,
+        required=True,
+        help='JSON string of collection data (e.g., '''{"name": "My Collection"}''')'
+    )
+    create_collection_parser.set_defaults(func=create_collection_cli)
+
+    # Update collection sub-command
+    update_collection_parser = collections_subparsers.add_parser('update', help='Update an existing collection')
+    update_collection_parser.add_argument(
+        '--collection-id',
+        type=str,
+        required=True,
+        help='The key of the collection to update'
+    )
+    update_collection_parser.add_argument(
+        '--data',
+        type=str,
+        required=True,
+        help='JSON string of updated collection data'
+    )
+    update_collection_parser.add_argument(
+        '--version',
+        type=int,
+        default=None,
+        help='The version of the collection to ensure no conflicts'
+    )
+    update_collection_parser.set_defaults(func=update_collection_cli)
+
+    # Delete collection sub-command
+    delete_collection_parser = collections_subparsers.add_parser('delete', help='Delete a collection')
+    delete_collection_parser.add_argument(
+        '--collection-id',
+        type=str,
+        required=True,
+        help='The key of the collection to delete'
+    )
+    delete_collection_parser.add_argument(
+        '--version',
+        type=int,
+        default=None,
+        help='The version of the collection to ensure no conflicts'
+    )
+    delete_collection_parser.set_defaults(func=delete_collection_cli)
     
     args = parser.parse_args()
     
@@ -180,6 +282,10 @@ def main():
     
     if args.command == 'items' and not args.item_command:
         items_parser.print_help()
+        sys.exit(1)
+    
+    if args.command == 'collections' and not args.collection_command:
+        collections_parser.print_help()
         sys.exit(1)
     
     args.func(args)
