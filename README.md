@@ -1,3 +1,3 @@
 # Zotero API Client
 
-A Python client for interacting with the Zotero API.
+A Python CLI app for managing a Zotero web library.
