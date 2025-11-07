@@ -275,3 +275,115 @@ def test_upload_attachment(mock_open, mock_basename, mock_get, mock_post, mock_p
     assert uploaded_attachment.key == "UPLOADATTACHMENT1"
     assert uploaded_attachment.title == title
     assert uploaded_attachment.parent_item == parent_item_id
+
+@patch('requests.get')
+@patch('builtins.open', new_callable=Mock)
+def test_download_attachment(mock_open, mock_get, mock_client):
+    attachment_id = "ATTACHMENT123"
+    output_path = "/tmp/downloaded_file.pdf"
+    file_content = b"This is the content of the downloaded file."
+
+    # Mock get_item call for the attachment
+    mock_item_response = Mock()
+    mock_item_response.json.return_value = {
+        "key": attachment_id,
+        "version": 1,
+        "data": {
+            "key": attachment_id,
+            "itemType": "attachment",
+            "title": "Downloaded Attachment",
+            "parentItem": "PARENTITEM123",
+            "creators": [],
+            "date": "2024",
+            "url": ""
+        },
+        "links": {
+            "file": {"href": "https://api.zotero.org/users/test_user/items/ATTACHMENT123/file"}
+        }
+    }
+    mock_item_response.raise_for_status.return_value = None
+
+    # Mock the actual file download call
+    mock_file_download_response = Mock()
+    mock_file_download_response.iter_content.return_value = [file_content]
+    mock_file_download_response.raise_for_status.return_value = None
+
+    # Configure mock_get to return different responses for sequential calls
+    mock_get.side_effect = [mock_item_response, mock_file_download_response]
+
+    # Mock file writing
+    mock_file_handle = Mock()
+    mock_open.return_value = MagicMock()
+    mock_open.return_value.__enter__.return_value = mock_file_handle
+    mock_open.return_value.__exit__.return_value = None
+
+    downloaded_path = mock_client.download_attachment(attachment_id, output_path)
+
+    # Assert get_item was called
+    mock_get.assert_any_call(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{attachment_id}',
+        headers=mock_client.headers
+    )
+
+    # Assert file download was called
+    mock_get.assert_any_call(
+        "https://api.zotero.org/users/test_user/items/ATTACHMENT123/file",
+        headers=mock_client.headers,
+        stream=True
+    )
+
+    # Assert file was opened and content written
+    mock_open.assert_called_once_with(output_path, 'wb')
+    mock_file_handle.write.assert_called_once_with(file_content)
+
+    assert downloaded_path == output_path
+
+@patch('requests.get')
+def test_download_attachment_not_attachment(mock_get, mock_client):
+    attachment_id = "NOTATTACHMENT123"
+    output_path = "/tmp/output.pdf"
+
+    mock_item_response = Mock()
+    mock_item_response.json.return_value = {
+        "key": attachment_id,
+        "version": 1,
+        "data": {
+            "key": attachment_id,
+            "itemType": "book", # Not an attachment
+            "title": "Not an Attachment",
+            "creators": [],
+            "date": "2024",
+            "url": ""
+        },
+        "links": {}
+    }
+    mock_item_response.raise_for_status.return_value = None
+    mock_get.return_value = mock_item_response
+
+    with pytest.raises(ValueError, match=f"Item {attachment_id} is not an attachment."):
+        mock_client.download_attachment(attachment_id, output_path)
+
+@patch('requests.get')
+def test_download_attachment_no_file_link(mock_get, mock_client):
+    attachment_id = "NOFILELINK123"
+    output_path = "/tmp/output.pdf"
+
+    mock_item_response = Mock()
+    mock_item_response.json.return_value = {
+        "key": attachment_id,
+        "version": 1,
+        "data": {
+            "key": attachment_id,
+            "itemType": "attachment",
+            "title": "No File Link",
+            "creators": [],
+            "date": "2024",
+            "url": ""
+        },
+        "links": {} # No file link
+    }
+    mock_item_response.raise_for_status.return_value = None
+    mock_get.return_value = mock_item_response
+
+    with pytest.raises(ValueError, match=f"Attachment {attachment_id} does not have a downloadable file."):
+        mock_client.download_attachment(attachment_id, output_path)

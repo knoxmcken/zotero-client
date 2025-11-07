@@ -117,6 +117,24 @@ def delete_item_cli(args):
         sys.exit(1)
 
 
+def download_attachment_cli(args):
+    """
+    Download an attachment file from Zotero via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        downloaded_path = client.download_attachment(args.attachment_id, args.output_path)
+        print(f"Successfully downloaded attachment {args.attachment_id} to: {downloaded_path}")
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error downloading attachment: {e}")
+        sys.exit(1)
+
+
 def upload_attachment_cli(args):
     """
     Upload a file as an attachment to a Zotero item via CLI.
@@ -487,6 +505,22 @@ def main():
         help='Optional: The title for the attachment item (defaults to filename)'
     )
     upload_attachment_parser.set_defaults(func=upload_attachment_cli)
+
+    # Download attachment sub-command
+    download_attachment_parser = attachments_subparsers.add_parser('download', help='Download an attachment file')
+    download_attachment_parser.add_argument(
+        '--attachment-id',
+        type=str,
+        required=True,
+        help='The ID of the attachment item to download'
+    )
+    download_attachment_parser.add_argument(
+        '--output-path',
+        type=str,
+        required=True,
+        help='The path where the downloaded file should be saved'
+    )
+    download_attachment_parser.set_defaults(func=download_attachment_cli)
     
     args = parser.parse_args()
     

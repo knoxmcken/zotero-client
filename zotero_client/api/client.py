@@ -194,6 +194,35 @@ class ZoteroClient:
 
         return created_attachment_item
 
+    def download_attachment(self, attachment_id: str, output_path: str) -> str:
+        """
+        Download the file content of an attachment.
+
+        Args:
+            attachment_id: The ID of the attachment item to download.
+            output_path: The path where the downloaded file should be saved.
+
+        Returns:
+            The path to the downloaded file.
+        """
+        attachment_item = self.get_item(attachment_id)
+
+        if attachment_item.item_type != 'attachment':
+            raise ValueError(f"Item {attachment_id} is not an attachment.")
+
+        if 'file' not in attachment_item.links:
+            raise ValueError(f"Attachment {attachment_id} does not have a downloadable file.")
+
+        download_url = attachment_item.links['file']['href']
+        response = requests.get(download_url, headers=self.headers, stream=True)
+        response.raise_for_status()
+
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        return output_path
+
     def get_attachment_template(self, item_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Retrieve an attachment item template from the Zotero API.

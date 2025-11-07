@@ -158,3 +158,57 @@ def test_upload_attachment_cli_file_not_found(mock_exit, mock_zotero_client, moc
     captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
     assert "Error: File not found at /tmp/non_existent_file.pdf\n" in captured_output
     mock_exit.assert_called_once_with(1)
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+def test_download_attachment_cli(mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    
+    mock_client_instance = MagicMock()
+    mock_client_instance.download_attachment.return_value = "/tmp/downloaded_file.pdf"
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock(
+        attachment_id="ATTACHMENT123",
+        output_path="/tmp/downloaded_file.pdf"
+    )
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import download_attachment_cli
+        download_attachment_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_client_instance.download_attachment.assert_called_once_with(
+        "ATTACHMENT123",
+        "/tmp/downloaded_file.pdf"
+    )
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Successfully downloaded attachment ATTACHMENT123 to: /tmp/downloaded_file.pdf\n" in captured_output
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+@patch('sys.exit')
+def test_download_attachment_cli_value_error(mock_exit, mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    
+    mock_client_instance = MagicMock()
+    mock_client_instance.download_attachment.side_effect = ValueError("Item is not an attachment.")
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock(
+        attachment_id="NOTATTACHMENT123",
+        output_path="/tmp/output.pdf"
+    )
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import download_attachment_cli
+        download_attachment_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_client_instance.download_attachment.assert_called_once_with(
+        "NOTATTACHMENT123",
+        "/tmp/output.pdf"
+    )
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Error: Item is not an attachment.\n" in captured_output
+    mock_exit.assert_called_once_with(1)
