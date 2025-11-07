@@ -8,7 +8,7 @@ The subject line should be a short, descriptive summary of the change, 50 charac
 
 ## Body
 
-The body of the commit message is optional, but it's highly recommended for anything but the most trivial changes. It should provide more context about the change, explaining the "what" and "why" of the change, not the "how".
+The body of the commit message is optional, but it's highly recommended for anything but the most trivial changes. It should provide more context about the change, explaining the "what" and "why" of the change, not the "how". If the change is minor and the subject line is self-explanatory, the body can be omitted.
 
 The body should be separated from the subject line by a blank line. Each line of the body should be wrapped at 72 characters.
 
