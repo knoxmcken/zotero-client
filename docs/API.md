@@ -18,7 +18,7 @@ client = ZoteroClient(
 
 ### Methods
 
-#### `get_items(limit: Optional[int] = None) -> List[Dict]`
+#### `get_items(limit: Optional[int] = None) -> List[Item]`
 
 Retrieve items from the Zotero library.
 
@@ -26,16 +26,16 @@ Retrieve items from the Zotero library.
 - `limit` (int, optional): Maximum number of items to retrieve
 
 **Returns:**
-- List of item dictionaries
+- List of Item objects
 
 **Example:**
 ```python
 items = client.get_items(limit=10)
 for item in items:
-    print(item['data']['title'])
+    print(item.title)
 ```
 
-#### `get_item(item_id: str) -> Dict`
+#### `get_item(item_id: str) -> Item`
 
 Retrieve a specific item by ID.
 
@@ -43,12 +43,79 @@ Retrieve a specific item by ID.
 - `item_id` (str): The item ID
 
 **Returns:**
-- Item dictionary
+- Item object
 
 **Example:**
 ```python
 item = client.get_item('ABC123XYZ')
-print(item['data']['title'])
+print(item.title)
+```
+
+#### `create_item(item_data: Dict[str, Any]) -> Item`
+
+Create a new item in the Zotero library.
+
+**Parameters:**
+- `item_data` (Dict[str, Any]): A dictionary containing the item's data.
+
+**Returns:**
+- The created Item object.
+
+**Example:**
+```python
+new_item_data = {
+    "itemType": "book",
+    "title": "My New Book",
+    "creators": [
+        {
+            "creatorType": "author",
+            "firstName": "Jane",
+            "lastName": "Doe"
+        }
+    ],
+    "date": "2024",
+    "abstractNote": "This is a test book."
+}
+created_item = client.create_item(new_item_data)
+print(f"Created item: {created_item.title} (Key: {created_item.key})")
+```
+
+#### `update_item(item_id: str, item_data: Dict[str, Any], if_unmodified_since_version: Optional[int] = None) -> Item`
+
+Update an existing item in the Zotero library.
+
+**Parameters:**
+- `item_id` (str): The ID of the item to update.
+- `item_data` (Dict[str, Any]): A dictionary containing the updated item's data.
+- `if_unmodified_since_version` (int, optional): The version of the item to ensure no conflicts.
+
+**Returns:**
+- The updated Item object.
+
+**Example:**
+```python
+item_to_update = client.get_item('ABC123XYZ')
+updated_data = {"title": "Updated Book Title"}
+updated_item = client.update_item(item_to_update.key, updated_data, item_to_update.version)
+print(f"Updated item: {updated_item.title} (Version: {updated_item.version})")
+```
+
+#### `delete_item(item_id: str, if_unmodified_since_version: Optional[int] = None) -> None`
+
+Delete an item from the Zotero library.
+
+**Parameters:**
+- `item_id` (str): The ID of the item to delete.
+- `if_unmodified_since_version` (int, optional): The version of the item to ensure no conflicts.
+
+**Returns:**
+- None
+
+**Example:**
+```python
+item_to_delete = client.get_item('ABC123XYZ')
+client.delete_item(item_to_delete.key, item_to_delete.version)
+print(f"Deleted item with key: {item_to_delete.key}")
 ```
 
 #### `get_collections() -> List[Dict]`
@@ -90,33 +157,6 @@ cl collections
 ```
 
 ## Response Format
-
-### Item Response
-
-```json
-{
-  "key": "ITEM_KEY",
-  "version": 123,
-  "library": {...},
-  "links": {...},
-  "meta": {...},
-  "data": {
-    "key": "ITEM_KEY",
-    "version": 123,
-    "itemType": "journalArticle",
-    "title": "Article Title",
-    "creators": [
-      {
-        "creatorType": "author",
-        "firstName": "John",
-        "lastName": "Doe"
-      }
-    ],
-    "date": "2023",
-    "url": "https://example.com"
-  }
-}
-```
 
 ### Collection Response
 

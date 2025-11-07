@@ -3,6 +3,7 @@
 import unittest
 from unittest.mock import Mock, patch
 from zotero_client.api.client import ZoteroClient
+from zotero_client.models.item import Item
 
 
 class TestZoteroClient(unittest.TestCase):
@@ -24,14 +25,15 @@ class TestZoteroClient(unittest.TestCase):
     def test_get_items(self, mock_get):
         """Test getting items."""
         mock_response = Mock()
-        mock_response.json.return_value = [{'data': {'title': 'Test Item'}}]
+        mock_response.json.return_value = [{'data': {'title': 'Test Item', 'itemType': 'journalArticle', 'key': 'ABC', 'creators': [], 'date': '2023', 'url': ''}, 'version': 1}]
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
         
         items = self.client.get_items()
         
         self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]['data']['title'], 'Test Item')
+        self.assertIsInstance(items[0], Item)
+        self.assertEqual(items[0].title, 'Test Item')
 
 
 if __name__ == '__main__':

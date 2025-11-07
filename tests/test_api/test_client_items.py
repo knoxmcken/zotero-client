@@ -1,0 +1,89 @@
+import pytest
+from unittest.mock import Mock, patch
+from zotero_client.api.client import ZoteroClient
+from zotero_client.models.item import Item
+
+@pytest.fixture
+def mock_client():
+    return ZoteroClient(api_key="test_key", user_id="test_user")
+
+@patch('requests.post')
+def test_create_item(mock_post, mock_client):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [{
+        "key": "NEWITEM123",
+        "version": 1,
+        "data": {
+            "key": "NEWITEM123",
+            "itemType": "book",
+            "title": "New Test Book",
+            "creators": [],
+            "date": "2024",
+            "url": ""
+        }
+    }]
+    mock_post.return_value = mock_response
+
+    item_data = {"itemType": "book", "title": "New Test Book"}
+    created_item = mock_client.create_item(item_data)
+
+    mock_post.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
+        headers=mock_client.headers,
+        json=[item_data]
+    )
+    assert isinstance(created_item, Item)
+    assert created_item.key == "NEWITEM123"
+    assert created_item.title == "New Test Book"
+
+@patch('requests.put')
+def test_update_item(mock_put, mock_client):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [{
+        "key": "UPDATEITEM456",
+        "version": 2,
+        "data": {
+            "key": "UPDATEITEM456",
+            "itemType": "journalArticle",
+            "title": "Updated Article Title",
+            "creators": [],
+            "date": "2023",
+            "url": ""
+        }
+    }]
+    mock_put.return_value = mock_response
+
+    item_id = "UPDATEITEM456"
+    updated_data = {"title": "Updated Article Title"}
+    version = 1
+    updated_item = mock_client.update_item(item_id, updated_data, version)
+
+    expected_headers = mock_client.headers.copy()
+    expected_headers['If-Unmodified-Since-Version'] = str(version)
+    mock_put.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{item_id}',
+        headers=expected_headers,
+        json=updated_data
+    )
+    assert isinstance(updated_item, Item)
+    assert updated_item.title == "Updated Article Title"
+    assert updated_item.version == 2
+
+@patch('requests.delete')
+def test_delete_item(mock_delete, mock_client):
+    mock_response = Mock()
+    mock_response.status_code = 204 # No Content for successful delete
+    mock_delete.return_value = mock_response
+
+    item_id = "DELETEITEM789"
+    version = 1
+    mock_client.delete_item(item_id, version)
+
+    expected_headers = mock_client.headers.copy()
+    expected_headers['If-Unmodified-Since-Version'] = str(version)
+    mock_delete.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{item_id}',
+        headers=expected_headers
+    )

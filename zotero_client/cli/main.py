@@ -3,6 +3,7 @@
 import argparse
 import os
 import sys
+import json
 from dotenv import load_dotenv
 from zotero_client.api.client import ZoteroClient
 
@@ -28,10 +29,60 @@ def list_items(args):
     items = client.get_items(limit=args.limit)
     
     for item in items:
-        data = item.get('data', {})
-        title = data.get('title', 'Untitled')
-        item_type = data.get('itemType', 'unknown')
-        print(f"[{item_type}] {title}")
+        print(f"[{item.item_type}] {item.title}")
+
+
+def create_item_cli(args):
+    """
+    Create a new item in the Zotero library via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+    
+    try:
+        item_data = json.loads(args.data)
+        created_item = client.create_item(item_data)
+        print(f"Successfully created item: {created_item.title} (Key: {created_item.key})")
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON data provided for item creation.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error creating item: {e}")
+        sys.exit(1)
+
+
+def update_item_cli(args):
+    """
+    Update an existing item in the Zotero library via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        item_data = json.loads(args.data)
+        updated_item = client.update_item(args.item_id, item_data, args.version)
+        print(f"Successfully updated item: {updated_item.title} (Key: {updated_item.key}, Version: {updated_item.version})")
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON data provided for item update.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error updating item: {e}")
+        sys.exit(1)
+
+
+def delete_item_cli(args):
+    """
+    Delete an item from the Zotero library via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        client.delete_item(args.item_id, args.version)
+        print(f"Successfully deleted item with key: {args.item_id}")
+    except Exception as e:
+        print(f"Error deleting item: {e}")
+        sys.exit(1)
 
 
 def list_collections(args):
@@ -56,14 +107,66 @@ def main():
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
     # List items command
-    items_parser = subparsers.add_parser('items', help='List items from library')
-    items_parser.add_argument(
+    items_parser = subparsers.add_parser('items', help='Manage Zotero items')
+    items_subparsers = items_parser.add_subparsers(dest='item_command', help='Item commands')
+
+    # List items sub-command
+    list_items_parser = items_subparsers.add_parser('list', help='List items from library')
+    list_items_parser.add_argument(
         '--limit',
         type=int,
         default=None,
         help='Maximum number of items to retrieve'
     )
-    items_parser.set_defaults(func=list_items)
+    list_items_parser.set_defaults(func=list_items)
+
+    # Create item sub-command
+    create_item_parser = items_subparsers.add_parser('create', help='Create a new item')
+    create_item_parser.add_argument(
+        '--data',
+        type=str,
+        required=True,
+        help='JSON string of item data (e.g., '''{"itemType": "book", "title": "My Book"}''')'
+    )
+    create_item_parser.set_defaults(func=create_item_cli)
+
+    # Update item sub-command
+    update_item_parser = items_subparsers.add_parser('update', help='Update an existing item')
+    update_item_parser.add_argument(
+        '--item-id',
+        type=str,
+        required=True,
+        help='The key of the item to update'
+    )
+    update_item_parser.add_argument(
+        '--data',
+        type=str,
+        required=True,
+        help='JSON string of updated item data'
+    )
+    update_item_parser.add_argument(
+        '--version',
+        type=int,
+        default=None,
+        help='The version of the item to ensure no conflicts'
+    )
+    update_item_parser.set_defaults(func=update_item_cli)
+
+    # Delete item sub-command
+    delete_item_parser = items_subparsers.add_parser('delete', help='Delete an item')
+    delete_item_parser.add_argument(
+        '--item-id',
+        type=str,
+        required=True,
+        help='The key of the item to delete'
+    )
+    delete_item_parser.add_argument(
+        '--version',
+        type=int,
+        default=None,
+        help='The version of the item to ensure no conflicts'
+    )
+    delete_item_parser.set_defaults(func=delete_item_cli)
     
     # List collections command
     collections_parser = subparsers.add_parser('collections', help='List collections')
@@ -73,6 +176,10 @@ def main():
     
     if not args.command:
         parser.print_help()
+        sys.exit(1)
+    
+    if args.command == 'items' and not args.item_command:
+        items_parser.print_help()
         sys.exit(1)
     
     args.func(args)
