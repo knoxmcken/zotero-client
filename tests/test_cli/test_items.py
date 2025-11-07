@@ -13,7 +13,7 @@ def mock_client_with_items():
 @patch('zotero_client.cli.main.load_config')
 @patch('zotero_client.cli.main.ZoteroClient')
 def test_list_items_with_search_parameters(mock_zotero_client, mock_load_config, mock_client_with_items):
-    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
     mock_zotero_client.return_value = mock_client_with_items
 
     mock_args = MagicMock(
@@ -28,7 +28,7 @@ def test_list_items_with_search_parameters(mock_zotero_client, mock_load_config,
     with patch('sys.stdout', new=MagicMock()) as mock_stdout:
         list_items(mock_args)
 
-    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
     mock_client_with_items.get_items.assert_called_once_with(
         limit=10,
         q="search term",
@@ -43,7 +43,7 @@ def test_list_items_with_search_parameters(mock_zotero_client, mock_load_config,
 @patch('zotero_client.cli.main.load_config')
 @patch('zotero_client.cli.main.ZoteroClient')
 def test_list_items_no_search_parameters(mock_zotero_client, mock_load_config, mock_client_with_items):
-    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
     mock_zotero_client.return_value = mock_client_with_items
 
     mock_args = MagicMock(
@@ -58,7 +58,7 @@ def test_list_items_no_search_parameters(mock_zotero_client, mock_load_config, m
     with patch('sys.stdout', new=MagicMock()) as mock_stdout:
         list_items(mock_args)
 
-        mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+        mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
         mock_client_with_items.get_items.assert_called_once_with(
             limit=None,
             q=None,
@@ -80,7 +80,7 @@ def mock_client_with_attachments():
 @patch('zotero_client.cli.main.load_config')
 @patch('zotero_client.cli.main.ZoteroClient')
 def test_list_attachments_cli(mock_zotero_client, mock_load_config, mock_client_with_attachments):
-    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
     mock_zotero_client.return_value = mock_client_with_attachments
 
     mock_args = MagicMock(
@@ -92,7 +92,7 @@ def test_list_attachments_cli(mock_zotero_client, mock_load_config, mock_client_
         from zotero_client.cli.main import list_attachments # Import here to avoid circular dependency issues with patching
         list_attachments(mock_args)
 
-    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
     mock_client_with_attachments.get_attachments.assert_called_once_with(
         item_id="PARENTITEM123",
         limit=5
@@ -103,7 +103,7 @@ def test_list_attachments_cli(mock_zotero_client, mock_load_config, mock_client_
 @patch('zotero_client.cli.main.load_config')
 @patch('zotero_client.cli.main.ZoteroClient')
 def test_upload_attachment_cli(mock_zotero_client, mock_load_config):
-    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
     
     mock_uploaded_item = Item(key="UPLOADED1", version=1, item_type="attachment", title="Uploaded File", parent_item="PARENT456", creators=[], date="2024", url="")
     mock_client_instance = MagicMock()
@@ -120,7 +120,7 @@ def test_upload_attachment_cli(mock_zotero_client, mock_load_config):
         from zotero_client.cli.main import upload_attachment_cli
         upload_attachment_cli(mock_args)
 
-    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
     mock_client_instance.upload_attachment.assert_called_once_with(
         "PARENT456",
         "/tmp/test_upload.pdf",
@@ -133,7 +133,7 @@ def test_upload_attachment_cli(mock_zotero_client, mock_load_config):
 @patch('zotero_client.cli.main.ZoteroClient')
 @patch('sys.exit')
 def test_upload_attachment_cli_file_not_found(mock_exit, mock_zotero_client, mock_load_config):
-    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
     
     mock_client_instance = MagicMock()
     mock_client_instance.upload_attachment.side_effect = FileNotFoundError("File not found")
@@ -149,7 +149,7 @@ def test_upload_attachment_cli_file_not_found(mock_exit, mock_zotero_client, moc
         from zotero_client.cli.main import upload_attachment_cli
         upload_attachment_cli(mock_args)
 
-    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
     mock_client_instance.upload_attachment.assert_called_once_with(
         "PARENT456",
         "/tmp/non_existent_file.pdf",
@@ -162,7 +162,7 @@ def test_upload_attachment_cli_file_not_found(mock_exit, mock_zotero_client, moc
 @patch('zotero_client.cli.main.load_config')
 @patch('zotero_client.cli.main.ZoteroClient')
 def test_download_attachment_cli(mock_zotero_client, mock_load_config):
-    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
     
     mock_client_instance = MagicMock()
     mock_client_instance.download_attachment.return_value = "/tmp/downloaded_file.pdf"
@@ -177,7 +177,7 @@ def test_download_attachment_cli(mock_zotero_client, mock_load_config):
         from zotero_client.cli.main import download_attachment_cli
         download_attachment_cli(mock_args)
 
-    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
     mock_client_instance.download_attachment.assert_called_once_with(
         "ATTACHMENT123",
         "/tmp/downloaded_file.pdf"
@@ -189,7 +189,7 @@ def test_download_attachment_cli(mock_zotero_client, mock_load_config):
 @patch('zotero_client.cli.main.ZoteroClient')
 @patch('sys.exit')
 def test_download_attachment_cli_value_error(mock_exit, mock_zotero_client, mock_load_config):
-    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
     
     mock_client_instance = MagicMock()
     mock_client_instance.download_attachment.side_effect = ValueError("Item is not an attachment.")
@@ -204,7 +204,7 @@ def test_download_attachment_cli_value_error(mock_exit, mock_zotero_client, mock
         from zotero_client.cli.main import download_attachment_cli
         download_attachment_cli(mock_args)
 
-    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
     mock_client_instance.download_attachment.assert_called_once_with(
         "NOTATTACHMENT123",
         "/tmp/output.pdf"
@@ -216,7 +216,7 @@ def test_download_attachment_cli_value_error(mock_exit, mock_zotero_client, mock
 @patch('zotero_client.cli.main.load_config')
 @patch('zotero_client.cli.main.ZoteroClient')
 def test_generate_citations_cli(mock_zotero_client, mock_load_config):
-    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
     
     mock_client_instance = MagicMock()
     mock_client_instance.get_citations.return_value = "<p>Formatted Citation</p>"
@@ -233,7 +233,7 @@ def test_generate_citations_cli(mock_zotero_client, mock_load_config):
         from zotero_client.cli.main import generate_citations_cli
         generate_citations_cli(mock_args)
 
-    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
     mock_client_instance.get_citations.assert_called_once_with(
         ["ITEM123", "ITEM456"],
         "apa",
@@ -247,7 +247,7 @@ def test_generate_citations_cli(mock_zotero_client, mock_load_config):
 @patch('zotero_client.cli.main.ZoteroClient')
 @patch('sys.exit')
 def test_generate_citations_cli_error(mock_exit, mock_zotero_client, mock_load_config):
-    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
     
     mock_client_instance = MagicMock()
     mock_client_instance.get_citations.side_effect = Exception("API Error")
@@ -264,7 +264,7 @@ def test_generate_citations_cli_error(mock_exit, mock_zotero_client, mock_load_c
         from zotero_client.cli.main import generate_citations_cli
         generate_citations_cli(mock_args)
 
-    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
     mock_client_instance.get_citations.assert_called_once_with(
         ["ITEM123"],
         "apa",
@@ -273,4 +273,81 @@ def test_generate_citations_cli_error(mock_exit, mock_zotero_client, mock_load_c
     )
     captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
     assert "Error generating citations: API Error\n" in captured_output
+    mock_exit.assert_called_once_with(1)
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+def test_summarize_item_cli(mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    
+    mock_client_instance = MagicMock()
+    mock_client_instance.summarize_item_content.return_value = "This is a summary."
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock(
+        item_id="ITEMTOSUMMARIZE",
+        prompt="Summarize this."
+    )
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import summarize_item_cli
+        summarize_item_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
+    mock_client_instance.summarize_item_content.assert_called_once_with(
+        "ITEMTOSUMMARIZE",
+        "Summarize this."
+    )
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Summary for item ITEMTOSUMMARIZE:\nThis is a summary.\n" in captured_output
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+@patch('sys.exit')
+def test_summarize_item_cli_no_openai_key(mock_exit, mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id", None)
+    
+    mock_client_instance = MagicMock()
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock(
+        item_id="ITEMTOSUMMARIZE",
+        prompt="Summarize this."
+    )
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import summarize_item_cli
+        summarize_item_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key=None)
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Error: OPENAI_API_KEY is not set in .env file. Please configure it using 'cl configure'.\n" in captured_output
+    mock_exit.assert_called_once_with(1)
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+@patch('sys.exit')
+def test_summarize_item_cli_runtime_error(mock_exit, mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    
+    mock_client_instance = MagicMock()
+    mock_client_instance.summarize_item_content.side_effect = RuntimeError("OpenAI API error")
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock(
+        item_id="ITEMTOSUMMARIZE",
+        prompt="Summarize this."
+    )
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import summarize_item_cli
+        summarize_item_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
+    mock_client_instance.summarize_item_content.assert_called_once_with(
+        "ITEMTOSUMMARIZE",
+        "Summarize this."
+    )
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Error: OpenAI API error\n" in captured_output
     mock_exit.assert_called_once_with(1)

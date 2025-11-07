@@ -3,6 +3,7 @@
 import requests
 from typing import List, Dict, Optional, Any
 import os
+import openai
 from zotero_client.models.item import Item
 from zotero_client.models.collection import Collection
 from zotero_client.models.tag import Tag
@@ -13,17 +14,19 @@ class ZoteroClient:
     
     BASE_URL = 'https://api.zotero.org'
     
-    def __init__(self, api_key: str, user_id: str, library_type: str = 'users'):
+    def __init__(self, api_key: str, user_id: str, openai_api_key: Optional[str] = None, library_type: str = 'users'):
         """
         Initialize the Zotero client.
         
         Args:
             api_key: Zotero API key
             user_id: Zotero user ID
+            openai_api_key: Optional. OpenAI API key for AI-powered features.
             library_type: Type of library ('users' or 'groups')
         """
         self.api_key = api_key
         self.user_id = user_id
+        self.openai_api_key = openai_api_key
         self.library_type = library_type
         self.headers = {'Zotero-API-Key': self.api_key}
     
@@ -249,6 +252,43 @@ class ZoteroClient:
         response = requests.get(url, headers=self.headers, params=params)
         response.raise_for_status()
         return response.text
+
+    def summarize_item_content(self, item_id: str, prompt: str = "Summarize the following text:") -> str:
+        """
+        Summarize the content of a Zotero item using OpenAI.
+
+        Args:
+            item_id: The ID of the item to summarize.
+            prompt: The prompt to send to the OpenAI model. Defaults to "Summarize the following text:".
+
+        Returns:
+            A string containing the summary.
+        """
+        if not self.openai_api_key:
+            raise ValueError("OpenAI API key is not configured.")
+
+        item = self.get_item(item_id)
+        content_to_summarize = item.title # Start with title, can be expanded to abstract/notes/attachments
+
+        if hasattr(item, 'abstract_note') and item.abstract_note:
+            content_to_summarize += f"\n\nAbstract: {item.abstract_note}"
+        # Further expansion could involve fetching full-text from attachments
+
+        if not content_to_summarize:
+            return "No content available to summarize."
+
+        try:
+            client = openai.OpenAI(api_key=self.openai_api_key)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": content_to_summarize}
+                ]
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            raise RuntimeError(f"OpenAI API error: {e}")
 
     def get_attachment_template(self, item_id: Optional[str] = None) -> Dict[str, Any]:
         """

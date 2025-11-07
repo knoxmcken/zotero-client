@@ -13,12 +13,13 @@ def load_config():
     load_dotenv()
     api_key = os.getenv('ZOTERO_API_KEY')
     user_id = os.getenv('ZOTERO_USER_ID')
+    openai_api_key = os.getenv('OPENAI_API_KEY')
     
     if not api_key or not user_id:
         print("Error: ZOTERO_API_KEY and ZOTERO_USER_ID must be set in .env file")
         sys.exit(1)
     
-    return api_key, user_id
+    return api_key, user_id, openai_api_key
 
 
 def configure_cli(args):
@@ -48,8 +49,8 @@ def list_items(args):
     """
     List items from Zotero library with optional search filters.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
     
     items = client.get_items(
         limit=args.limit,
@@ -68,8 +69,8 @@ def create_item_cli(args):
     """
     Create a new item in the Zotero library via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
     
     try:
         item_data = json.loads(args.data)
@@ -87,8 +88,8 @@ def update_item_cli(args):
     """
     Update an existing item in the Zotero library via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         item_data = json.loads(args.data)
@@ -106,8 +107,8 @@ def delete_item_cli(args):
     """
     Delete an item from the Zotero library via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         client.delete_item(args.item_id, args.version)
@@ -117,12 +118,37 @@ def delete_item_cli(args):
         sys.exit(1)
 
 
+def summarize_item_cli(args):
+    """
+    Summarize the content of a Zotero item using OpenAI via CLI.
+    """
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
+
+    if not openai_api_key:
+        print("Error: OPENAI_API_KEY is not set in .env file. Please configure it using 'cl configure'.")
+        sys.exit(1)
+
+    try:
+        summary = client.summarize_item_content(args.item_id, args.prompt)
+        print(f"Summary for item {args.item_id}:\n{summary}")
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        sys.exit(1)
+
+
 def generate_citations_cli(args):
     """
     Generate formatted citations or a bibliography for Zotero items via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         item_ids = args.item_ids.split(',')
@@ -137,8 +163,8 @@ def download_attachment_cli(args):
     """
     Download an attachment file from Zotero via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         downloaded_path = client.download_attachment(args.attachment_id, args.output_path)
@@ -155,8 +181,8 @@ def upload_attachment_cli(args):
     """
     Upload a file as an attachment to a Zotero item via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         uploaded_attachment = client.upload_attachment(args.parent_item_id, args.file_path, args.title)
@@ -173,8 +199,8 @@ def list_attachments(args):
     """
     List attachments from Zotero library, optionally filtered by parent item.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     attachments = client.get_attachments(item_id=args.item_id, limit=args.limit)
 
@@ -186,8 +212,8 @@ def list_attachments(args):
 def list_collections(args):
     """
     List collections from Zotero library."""
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
     
     collections = client.get_collections()
     
@@ -199,8 +225,8 @@ def create_collection_cli(args):
     """
     Create a new collection in the Zotero library via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         collection_data = json.loads(args.data)
@@ -218,8 +244,8 @@ def update_collection_cli(args):
     """
     Update an existing collection in the Zotero library via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         collection_data = json.loads(args.data)
@@ -237,8 +263,8 @@ def delete_collection_cli(args):
     """
     Delete a collection from the Zotero library via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         client.delete_collection(args.collection_id, args.version)
@@ -252,8 +278,8 @@ def list_tags(args):
     """
     List tags from Zotero library.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     tags = client.get_tags(item_id=args.item_id)
 
@@ -265,8 +291,8 @@ def add_tags_to_item_cli(args):
     """
     Add tags to a specific item via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         tags_list = args.tags.split(',')
@@ -281,8 +307,8 @@ def remove_tags_from_item_cli(args):
     """
     Remove tags from a specific item via CLI.
     """
-    api_key, user_id = load_config()
-    client = ZoteroClient(api_key, user_id)
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
 
     try:
         tags_list = args.tags.split(',')
@@ -568,6 +594,26 @@ def main():
         help='Optional: The bibliography locale (e.g., "en-US")'
     )
     generate_citations_parser.set_defaults(func=generate_citations_cli)
+
+    # AI command
+    ai_parser = subparsers.add_parser('ai', help='AI-powered features')
+    ai_subparsers = ai_parser.add_subparsers(dest='ai_command', help='AI commands')
+
+    # Summarize item sub-command
+    summarize_item_parser = ai_subparsers.add_parser('summarize', help='Summarize Zotero item content using OpenAI')
+    summarize_item_parser.add_argument(
+        '--item-id',
+        type=str,
+        required=True,
+        help='The ID of the Zotero item to summarize'
+    )
+    summarize_item_parser.add_argument(
+        '--prompt',
+        type=str,
+        default="Summarize the following text:",
+        help='Optional: Custom prompt for the OpenAI model'
+    )
+    summarize_item_parser.set_defaults(func=summarize_item_cli)
     
     args = parser.parse_args()
     
@@ -593,6 +639,10 @@ def main():
 
     if args.command == 'citations' and not args.citation_command:
         citations_parser.print_help()
+        sys.exit(1)
+
+    if args.command == 'ai' and not args.ai_command:
+        ai_parser.print_help()
         sys.exit(1)
     
     args.func(args)
