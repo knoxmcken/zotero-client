@@ -187,6 +187,63 @@ client.delete_collection(collection_to_delete.key, collection_to_delete.version)
 print(f"Deleted collection with key: {collection_to_delete.key}")
 ```
 
+#### `get_tags(item_id: Optional[str] = None) -> List[Tag]`
+
+Retrieve tags from the Zotero library. Can be filtered by item.
+
+**Parameters:**
+- `item_id` (str, optional): The ID of the item to retrieve tags for.
+
+**Returns:**
+- List of Tag objects.
+
+**Example:**
+```python
+all_tags = client.get_tags()
+print(f"All tags: {[tag.tag for tag in all_tags]}")
+
+item_tags = client.get_tags(item_id='ABC123XYZ')
+print(f"Tags for item ABC123XYZ: {[tag.tag for tag in item_tags]}")
+```
+
+#### `add_tags_to_item(item_id: str, tags: List[str], if_unmodified_since_version: Optional[int] = None) -> None`
+
+Add tags to a specific item.
+
+**Parameters:**
+- `item_id` (str): The ID of the item to add tags to.
+- `tags` (List[str]): A list of tag names to add.
+- `if_unmodified_since_version` (int, optional): The version of the item to ensure no conflicts.
+
+**Returns:**
+- None
+
+**Example:**
+```python
+item_to_tag = client.get_item('ABC123XYZ')
+client.add_tags_to_item(item_to_tag.key, ["new-tag", "another-tag"], item_to_tag.version)
+print(f"Added tags to item: {item_to_tag.key}")
+```
+
+#### `remove_tags_from_item(item_id: str, tags: List[str], if_unmodified_since_version: Optional[int] = None) -> None`
+
+Remove tags from a specific item.
+
+**Parameters:**
+- `item_id` (str): The ID of the item to remove tags from.
+- `tags` (List[str]): A list of tag names to remove.
+- `if_unmodified_since_version` (int, optional): The version of the item to ensure no conflicts.
+
+**Returns:**
+- None
+
+**Example:**
+```python
+item_to_untag = client.get_item('ABC123XYZ')
+client.remove_tags_from_item(item_to_untag.key, ["old-tag"], item_to_untag.version)
+print(f"Removed tags from item: {item_to_untag.key}")
+```
+
 ## CLI Commands
 
 ### `cl items`
@@ -211,6 +268,19 @@ List collections from your Zotero library.
 cl collections
 ```
 
+### `cl tags`
+
+List tags from your Zotero library.
+
+**Options:**
+- `--item-id`: Filter tags by a specific item ID.
+
+**Examples:**
+```bash
+cl tags
+cl tags --item-id ABC123XYZ
+```
+
 ## Response Format
 
 ### Collection Response
@@ -228,5 +298,14 @@ cl collections
     "name": "My Collection",
     "parentCollection": false
   }
+}
+```
+
+### Tag Response
+
+```json
+{
+  "tag": "example-tag",
+  "type": 1
 }
 ```

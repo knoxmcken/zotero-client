@@ -4,6 +4,7 @@ import requests
 from typing import List, Dict, Optional, Any
 from zotero_client.models.item import Item
 from zotero_client.models.collection import Collection
+from zotero_client.models.tag import Tag
 
 
 class ZoteroClient:
@@ -171,4 +172,58 @@ class ZoteroClient:
             headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
         response = requests.delete(url, headers=headers)
         response.raise_for_status()
+        return None
+
+    def get_tags(self, item_id: Optional[str] = None) -> List[Tag]:
+        """
+        Retrieve tags from the Zotero library. Can be filtered by item.
+
+        Args:
+            item_id: Optional. The ID of the item to retrieve tags for.
+
+        Returns:
+            List of Tag objects.
+        """
+        if item_id:
+            url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}/tags'
+        else:
+            url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/tags'
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        return [Tag.from_api_response(tag_data) for tag_data in response.json()]
+
+    def add_tags_to_item(self, item_id: str, tags: List[str], if_unmodified_since_version: Optional[int] = None) -> None:
+        """
+        Add tags to a specific item.
+
+        Args:
+            item_id: The ID of the item to add tags to.
+            tags: A list of tag names to add.
+            if_unmodified_since_version: Optional. The version of the item to ensure no conflicts.
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}/tags'
+        headers = self.headers.copy()
+        if if_unmodified_since_version:
+            headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
+        tag_data = [{'tag': tag_name} for tag_name in tags]
+        response = requests.post(url, headers=headers, json=tag_data)
+        response.raise_for_status()
+        return None
+
+    def remove_tags_from_item(self, item_id: str, tags: List[str], if_unmodified_since_version: Optional[int] = None) -> None:
+        """
+        Remove tags from a specific item.
+
+        Args:
+            item_id: The ID of the item to remove tags from.
+            tags: A list of tag names to remove.
+            if_unmodified_since_version: Optional. The version of the item to ensure no conflicts.
+        """
+        for tag_name in tags:
+            url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}/tags/{tag_name}'
+            headers = self.headers.copy()
+            if if_unmodified_since_version:
+                headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
+            response = requests.delete(url, headers=headers)
+            response.raise_for_status()
         return None

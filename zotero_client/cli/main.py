@@ -149,6 +149,51 @@ def delete_collection_cli(args):
         sys.exit(1)
 
 
+def list_tags(args):
+    """
+    List tags from Zotero library.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    tags = client.get_tags(item_id=args.item_id)
+
+    for tag in tags:
+        print(f"{tag.tag} (Type: {'Manual' if tag.type == 1 else 'Automatic'})")
+
+
+def add_tags_to_item_cli(args):
+    """
+    Add tags to a specific item via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        tags_list = args.tags.split(',')
+        client.add_tags_to_item(args.item_id, tags_list, args.version)
+        print(f"Successfully added tags {tags_list} to item: {args.item_id}")
+    except Exception as e:
+        print(f"Error adding tags to item: {e}")
+        sys.exit(1)
+
+
+def remove_tags_from_item_cli(args):
+    """
+    Remove tags from a specific item via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        tags_list = args.tags.split(',')
+        client.remove_tags_from_item(args.item_id, tags_list, args.version)
+        print(f"Successfully removed tags {tags_list} from item: {args.item_id}")
+    except Exception as e:
+        print(f"Error removing tags from item: {e}")
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
