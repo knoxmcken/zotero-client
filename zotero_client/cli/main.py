@@ -143,6 +143,28 @@ def summarize_item_cli(args):
         sys.exit(1)
 
 
+def find_duplicates_cli(args):
+    """
+    Find potential duplicate items in the Zotero library via CLI.
+    """
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
+
+    try:
+        duplicates = client.find_duplicates()
+        if duplicates:
+            print("Potential duplicate items found:")
+            for key, items in duplicates.items():
+                print(f"\nGroup: {key}")
+                for item in items:
+                    print(f"  - [{item.item_type}] {item.title} (Key: {item.key}, Date: {item.date})")
+        else:
+            print("No potential duplicate items found.")
+    except Exception as e:
+        print(f"Error finding duplicates: {e}")
+        sys.exit(1)
+
+
 def generate_citations_cli(args):
     """
     Generate formatted citations or a bibliography for Zotero items via CLI.
@@ -614,6 +636,14 @@ def main():
         help='Optional: Custom prompt for the OpenAI model'
     )
     summarize_item_parser.set_defaults(func=summarize_item_cli)
+
+    # Duplicates command
+    duplicates_parser = subparsers.add_parser('duplicates', help='Manage duplicate items')
+    duplicates_subparsers = duplicates_parser.add_subparsers(dest='duplicates_command', help='Duplicate commands')
+
+    # Find duplicates sub-command
+    find_duplicates_parser = duplicates_subparsers.add_parser('find', help='Find potential duplicate items')
+    find_duplicates_parser.set_defaults(func=find_duplicates_cli)
     
     args = parser.parse_args()
     
@@ -643,6 +673,10 @@ def main():
 
     if args.command == 'ai' and not args.ai_command:
         ai_parser.print_help()
+        sys.exit(1)
+
+    if args.command == 'duplicates' and not args.duplicates_command:
+        duplicates_parser.print_help()
         sys.exit(1)
     
     args.func(args)

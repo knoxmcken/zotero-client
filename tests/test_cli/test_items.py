@@ -351,3 +351,72 @@ def test_summarize_item_cli_runtime_error(mock_exit, mock_zotero_client, mock_lo
     captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
     assert "Error: OpenAI API error\n" in captured_output
     mock_exit.assert_called_once_with(1)
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+def test_find_duplicates_cli(mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    
+    item1 = Item(key="ITEM1", item_type="journalArticle", title="Test Article", creators=[{'creatorType': 'author', 'firstName': 'John', 'lastName': 'Doe'}], date="2023-01-01", url="", version=1)
+    item2 = Item(key="ITEM2", item_type="journalArticle", title="Test Article", creators=[{'creatorType': 'author', 'firstName': 'John', 'lastName': 'Doe'}], date="2023-02-01", url="", version=1)
+    mock_duplicates = {"testarticle-doe-2023": [item1, item2]}
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.find_duplicates.return_value = mock_duplicates
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock()
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import find_duplicates_cli
+        find_duplicates_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
+    mock_client_instance.find_duplicates.assert_called_once_with()
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Potential duplicate items found:\n" in captured_output
+    assert "\nGroup: testarticle-doe-2023\n" in captured_output
+    assert "  - [journalArticle] Test Article (Key: ITEM1, Date: 2023-01-01)\n" in captured_output
+    assert "  - [journalArticle] Test Article (Key: ITEM2, Date: 2023-02-01)\n" in captured_output
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+def test_find_duplicates_cli_no_duplicates(mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    
+    mock_client_instance = MagicMock()
+    mock_client_instance.find_duplicates.return_value = {}
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock()
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import find_duplicates_cli
+        find_duplicates_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
+    mock_client_instance.find_duplicates.assert_called_once_with()
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "No potential duplicate items found.\n" in captured_output
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+@patch('sys.exit')
+def test_find_duplicates_cli_error(mock_exit, mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    
+    mock_client_instance = MagicMock()
+    mock_client_instance.find_duplicates.side_effect = Exception("API Error")
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock()
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import find_duplicates_cli
+        find_duplicates_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
+    mock_client_instance.find_duplicates.assert_called_once_with()
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Error finding duplicates: API Error\n" in captured_output
+    mock_exit.assert_called_once_with(1)

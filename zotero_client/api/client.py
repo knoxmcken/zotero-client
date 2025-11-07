@@ -290,6 +290,47 @@ class ZoteroClient:
         except Exception as e:
             raise RuntimeError(f"OpenAI API error: {e}")
 
+    def find_duplicates(self) -> Dict[str, List[Item]]:
+        """
+        Find potential duplicate items based on title, creators, and year.
+
+        Returns:
+            A dictionary where keys are a concatenated string of (title, creators, year)
+            and values are lists of Item objects identified as duplicates.
+        """
+        all_items = self.get_items(limit=None) # Fetch all items
+        item_map = {}
+        duplicates = {}
+
+        for item in all_items:
+            # Normalize title for comparison (lowercase, remove non-alphanumeric)
+            normalized_title = ''.join(filter(str.isalnum, item.title)).lower()
+
+            # Extract creator last names and sort them for consistent comparison
+            creator_last_names = sorted([c.get('lastName', '').lower() for c in item.creators if c.get('lastName')])
+            creators_key = '_'.join(creator_last_names)
+
+            # Extract year from date, handle various date formats
+            year = None
+            if item.date:
+                try:
+                    year = str(item.date).split('-')[0] # Assumes YYYY-MM-DD or YYYY
+                except IndexError:
+                    pass # Handle cases where date might be malformed
+            
+            # Create a unique key for comparison
+            # Only consider items with title, creators, and year for duplication check
+            if normalized_title and creators_key and year:
+                duplicate_key = f"{normalized_title}-{creators_key}-{year}"
+
+                if duplicate_key in item_map:
+                    if duplicate_key not in duplicates:
+                        duplicates[duplicate_key] = [item_map[duplicate_key]]
+                    duplicates[duplicate_key].append(item)
+                else:
+                    item_map[duplicate_key] = item
+        return duplicates
+
     def get_attachment_template(self, item_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Retrieve an attachment item template from the Zotero API.

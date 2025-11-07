@@ -219,6 +219,22 @@ summary = client.summarize_item_content('ITEM123', prompt="Provide a concise sum
 print(summary)
 ```
 
+#### `find_duplicates() -> Dict[str, List[Item]]`
+
+Find potential duplicate items based on title, creators, and year.
+
+**Returns:**
+- A dictionary where keys are a concatenated string of (title, creators, year) and values are lists of Item objects identified as duplicates.
+
+**Example:**
+```python
+duplicates = client.find_duplicates()
+for key, items in duplicates.items():
+    print(f"Duplicate Group: {key}")
+    for item in items:
+        print(f"  - {item.title} (Key: {item.key})")
+```
+
 #### `get_attachment_template(item_id: Optional[str] = None) -> Dict[str, Any]:
 
 #### `get_collections() -> List[Collection]`
@@ -476,6 +492,18 @@ AI-powered features.
 ```bash
 cl ai summarize --item-id ITEM123
 cl ai summarize --item-id ITEM456 --prompt "Provide a detailed summary of the key findings:"
+```
+
+### `cl duplicates`
+
+Manage duplicate items.
+
+**Commands:**
+- `find`: Find potential duplicate items.
+
+**Examples for `find`:**
+```bash
+cl duplicates find
 ```
 
 ## Response Format

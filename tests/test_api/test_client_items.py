@@ -458,3 +458,45 @@ def test_summarize_item_content_openai_error(mock_get_item, mock_openai, mock_cl
 
     with pytest.raises(RuntimeError, match="OpenAI API error: API connection error"):
         mock_client.summarize_item_content(item_id)
+
+@patch('zotero_client.api.client.ZoteroClient.get_items')
+def test_find_duplicates(mock_get_items, mock_client):
+    item1 = Item(key="ITEM1", item_type="journalArticle", title="Test Article", creators=[{'creatorType': 'author', 'firstName': 'John', 'lastName': 'Doe'}], date="2023-01-01", url="", version=1)
+    item2 = Item(key="ITEM2", item_type="journalArticle", title="Test Article", creators=[{'creatorType': 'author', 'firstName': 'John', 'lastName': 'Doe'}], date="2023-02-01", url="", version=1)
+    item3 = Item(key="ITEM3", item_type="book", title="Another Article", creators=[{'creatorType': 'author', 'firstName': 'Jane', 'lastName': 'Smith'}], date="2022-01-01", url="", version=1)
+    item4 = Item(key="ITEM4", item_type="journalArticle", title="Test Article", creators=[{'creatorType': 'author', 'firstName': 'J.', 'lastName': 'Doe'}], date="2023-03-01", url="", version=1) # Different first name, same last name
+    item5 = Item(key="ITEM5", item_type="journalArticle", title="Test Article", creators=[{'creatorType': 'author', 'firstName': 'John', 'lastName': 'Doe'}], date="2024-01-01", url="", version=1) # Different year
+
+    mock_get_items.return_value = [item1, item2, item3, item4, item5]
+
+    duplicates = mock_client.find_duplicates()
+
+    assert len(duplicates) == 1
+    duplicate_key = "testarticle-doe-2023"
+    assert duplicate_key in duplicates
+    assert len(duplicates[duplicate_key]) == 3
+    assert item1 in duplicates[duplicate_key]
+    assert item2 in duplicates[duplicate_key]
+    assert item5 not in duplicates[duplicate_key] # Different year, so not a duplicate
+
+@patch('zotero_client.api.client.ZoteroClient.get_items')
+def test_find_duplicates_no_duplicates(mock_get_items, mock_client):
+    item1 = Item(key="ITEM1", item_type="journalArticle", title="Unique Article 1", creators=[{'creatorType': 'author', 'firstName': 'John', 'lastName': 'Doe'}], date="2023-01-01", url="", version=1)
+    item2 = Item(key="ITEM2", item_type="book", title="Unique Article 2", creators=[{'creatorType': 'author', 'firstName': 'Jane', 'lastName': 'Smith'}], date="2022-01-01", url="", version=1)
+
+    mock_get_items.return_value = [item1, item2]
+
+    duplicates = mock_client.find_duplicates()
+
+    assert len(duplicates) == 0
+
+@patch('zotero_client.api.client.ZoteroClient.get_items')
+def test_find_duplicates_missing_data(mock_get_items, mock_client):
+    item1 = Item(key="ITEM1", item_type="journalArticle", title="Article with no creators", creators=[], date="2023-01-01", url="", version=1)
+    item2 = Item(key="ITEM2", item_type="book", title="Article with no date", creators=[{'creatorType': 'author', 'firstName': 'John', 'lastName': 'Doe'}], date="", url="", version=1)
+
+    mock_get_items.return_value = [item1, item2]
+
+    duplicates = mock_client.find_duplicates()
+
+    assert len(duplicates) == 0
