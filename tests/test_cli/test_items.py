@@ -99,3 +99,62 @@ def test_list_attachments_cli(mock_zotero_client, mock_load_config, mock_client_
     )
     captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
     assert "[Attachment] Test Attachment (Key: ATTACHMENT1, Parent: PARENTITEM123)\n" in captured_output
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+def test_upload_attachment_cli(mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    
+    mock_uploaded_item = Item(key="UPLOADED1", version=1, item_type="attachment", title="Uploaded File", parent_item="PARENT456", creators=[], date="2024", url="")
+    mock_client_instance = MagicMock()
+    mock_client_instance.upload_attachment.return_value = mock_uploaded_item
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock(
+        parent_item_id="PARENT456",
+        file_path="/tmp/test_upload.pdf",
+        title="Uploaded File"
+    )
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import upload_attachment_cli
+        upload_attachment_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_client_instance.upload_attachment.assert_called_once_with(
+        "PARENT456",
+        "/tmp/test_upload.pdf",
+        "Uploaded File"
+    )
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Successfully uploaded attachment: Uploaded File (Key: UPLOADED1)\n" in captured_output
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+@patch('sys.exit')
+def test_upload_attachment_cli_file_not_found(mock_exit, mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    
+    mock_client_instance = MagicMock()
+    mock_client_instance.upload_attachment.side_effect = FileNotFoundError("File not found")
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock(
+        parent_item_id="PARENT456",
+        file_path="/tmp/non_existent_file.pdf",
+        title="Non Existent File"
+    )
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import upload_attachment_cli
+        upload_attachment_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_client_instance.upload_attachment.assert_called_once_with(
+        "PARENT456",
+        "/tmp/non_existent_file.pdf",
+        "Non Existent File"
+    )
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Error: File not found at /tmp/non_existent_file.pdf\n" in captured_output
+    mock_exit.assert_called_once_with(1)

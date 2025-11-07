@@ -1,5 +1,6 @@
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
+import builtins
 from zotero_client.api.client import ZoteroClient
 from zotero_client.models.item import Item
 
@@ -178,3 +179,99 @@ def test_get_attachments(mock_get, mock_client):
     )
     assert len(attachments_for_item) == 1
     assert attachments_for_item[0].parent_item == "PARENTITEM123"
+
+@patch('requests.put')
+@patch('requests.post')
+@patch('requests.get')
+@patch('os.path.basename', return_value="test_file.pdf")
+@patch('builtins.open', new_callable=Mock)
+def test_upload_attachment(mock_open, mock_basename, mock_get, mock_post, mock_put, mock_client):
+    parent_item_id = "PARENTITEM123"
+    file_path = "/path/to/test_file.pdf"
+    title = "My Custom Attachment Title"
+
+    # Mock get_attachment_template
+    mock_get.return_value.json.return_value = {
+        "itemType": "attachment",
+        "parentItem": "PARENTITEM123",
+        "linkMode": "imported_url", # Changed to imported_url
+        "contentType": "application/pdf",
+        "filename": "test_file.pdf",
+        "title": "Test Attachment"
+    }
+    mock_get.return_value.raise_for_status.return_value = None
+
+    # Mock create_item (requests.post)
+    mock_post.return_value.json.return_value = [{
+        "key": "UPLOADATTACHMENT1",
+        "version": 1,
+        "data": {
+            "key": "UPLOADATTACHMENT1",
+            "itemType": "attachment",
+            "title": title, # Dynamically set title
+            "parentItem": "PARENTITEM123",
+            "filename": "test_file.pdf",
+            "contentType": "application/pdf",
+            "linkMode": "imported_file"
+        },
+        "links": {
+            "file": {"href": "https://api.zotero.org/users/test_user/items/UPLOADATTACHMENT1/file"}
+        }
+    }]
+    mock_post.return_value.raise_for_status.return_value = None
+
+    # Mock file content
+    mock_file_handle = Mock()
+    mock_file_handle.read.return_value = b"file content"
+    
+    mock_open.return_value = MagicMock()
+    mock_open.return_value.__enter__.return_value = mock_file_handle
+    mock_open.return_value.__exit__.return_value = None
+
+    # Mock upload file (requests.put)
+    mock_put.return_value.raise_for_status.return_value = None
+
+    parent_item_id = "PARENTITEM123"
+    file_path = "/path/to/test_file.pdf"
+    title = "My Custom Attachment Title"
+
+    uploaded_attachment = mock_client.upload_attachment(parent_item_id, file_path, title)
+
+    # Assert get_attachment_template was called
+    mock_get.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/new',
+        headers=mock_client.headers,
+        params={'itemType': 'attachment', 'linkMode': 'imported_url', 'parentItem': parent_item_id}
+    )
+
+    # Assert create_item was called
+    expected_post_data = {
+        "itemType": "attachment",
+        "parentItem": parent_item_id,
+        "linkMode": "imported_file",
+        "contentType": "application/octet-stream", # This is set in the client, not from template
+        "filename": "test_file.pdf",
+        "title": title
+    }
+    mock_post.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
+        headers=mock_client.headers,
+        json=[expected_post_data]
+    )
+
+    # Assert file was opened
+    mock_open.assert_called_once_with(file_path, 'rb')
+
+    # Assert file upload was called
+    expected_upload_headers = mock_client.headers.copy()
+    expected_upload_headers['Content-Type'] = 'application/octet-stream'
+    mock_put.assert_called_once_with(
+        "https://api.zotero.org/users/test_user/items/UPLOADATTACHMENT1/file",
+        headers=expected_upload_headers,
+        data=b"file content"
+    )
+
+    assert isinstance(uploaded_attachment, Item)
+    assert uploaded_attachment.key == "UPLOADATTACHMENT1"
+    assert uploaded_attachment.title == title
+    assert uploaded_attachment.parent_item == parent_item_id

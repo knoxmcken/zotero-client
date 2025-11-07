@@ -145,6 +145,26 @@ for attachment in item_attachments:
     print(f"Attachment: {attachment.title}")
 ```
 
+#### `upload_attachment(parent_item_id: str, file_path: str, title: Optional[str] = None) -> Item`
+
+Upload a file as an attachment to a Zotero item.
+
+**Parameters:**
+- `parent_item_id` (str): The ID of the parent item to attach the file to.
+- `file_path` (str): The path to the file to upload.
+- `title` (str, optional): The title for the attachment item. If not provided, uses the filename.
+
+**Returns:**
+- The created Item object representing the attachment.
+
+**Example:**
+```python
+# Assuming 'my_document.pdf' exists in the current directory
+# and 'PARENTITEM123' is a valid item ID
+attachment = client.upload_attachment('PARENTITEM123', 'my_document.pdf', title='My Uploaded Document')
+print(f"Uploaded attachment: {attachment.title} (Key: {attachment.key})")
+```
+
 #### `get_collections() -> List[Collection]`
 
 Retrieve collections from the Zotero library.
@@ -331,16 +351,29 @@ Manage Zotero attachments.
 
 **Commands:**
 - `list`: List attachments from your Zotero library.
+- `upload`: Upload a file as an attachment to an item.
 
 **Options for `list`:**
 - `--item-id` (str, optional): Filter attachments by a specific parent item ID.
 - `--limit` (int, optional): Maximum number of attachments to retrieve.
 
-**Examples:**
+**Examples for `list`:**
 ```bash
 cl attachments list
 cl attachments list --item-id PARENTITEM123
 cl attachments list --limit 5
+```
+
+**Options for `upload`:**
+- `--parent-item-id` (str, required): The ID of the parent item to attach the file to.
+- `--file-path` (str, required): The path to the file to upload.
+- `--title` (str, optional): The title for the attachment item (defaults to filename).
+
+**Examples for `upload`:**
+```bash
+# Assuming 'my_document.pdf' exists in the current directory
+cl attachments upload --parent-item-id PARENTITEM123 --file-path my_document.pdf --title "My Research Notes"
+cl attachments upload --parent-item-id ANOTHERITEM456 --file-path another_file.txt
 ```
 
 ## Response Format

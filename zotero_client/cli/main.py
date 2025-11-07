@@ -117,6 +117,24 @@ def delete_item_cli(args):
         sys.exit(1)
 
 
+def upload_attachment_cli(args):
+    """
+    Upload a file as an attachment to a Zotero item via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        uploaded_attachment = client.upload_attachment(args.parent_item_id, args.file_path, args.title)
+        print(f"Successfully uploaded attachment: {uploaded_attachment.title} (Key: {uploaded_attachment.key})")
+    except FileNotFoundError:
+        print(f"Error: File not found at {args.file_path}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error uploading attachment: {e}")
+        sys.exit(1)
+
+
 def list_attachments(args):
     """
     List attachments from Zotero library, optionally filtered by parent item.
@@ -447,6 +465,28 @@ def main():
         help='Maximum number of attachments to retrieve'
     )
     list_attachments_parser.set_defaults(func=list_attachments)
+
+    # Upload attachment sub-command
+    upload_attachment_parser = attachments_subparsers.add_parser('upload', help='Upload a file as an attachment to an item')
+    upload_attachment_parser.add_argument(
+        '--parent-item-id',
+        type=str,
+        required=True,
+        help='The ID of the parent item to attach the file to'
+    )
+    upload_attachment_parser.add_argument(
+        '--file-path',
+        type=str,
+        required=True,
+        help='The path to the file to upload'
+    )
+    upload_attachment_parser.add_argument(
+        '--title',
+        type=str,
+        default=None,
+        help='Optional: The title for the attachment item (defaults to filename)'
+    )
+    upload_attachment_parser.set_defaults(func=upload_attachment_cli)
     
     args = parser.parse_args()
     

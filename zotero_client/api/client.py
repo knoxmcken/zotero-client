@@ -2,6 +2,7 @@
 
 import requests
 from typing import List, Dict, Optional, Any
+import os
 from zotero_client.models.item import Item
 from zotero_client.models.collection import Collection
 from zotero_client.models.tag import Tag
@@ -147,7 +148,72 @@ class ZoteroClient:
         response = requests.get(url, headers=self.headers, params=params)
         response.raise_for_status()
         return [Item.from_api_response(item_data) for item_data in response.json()]
-    
+
+    def upload_attachment(self, parent_item_id: str, file_path: str, title: Optional[str] = None) -> Item:
+        """
+        Upload a file as an attachment to a Zotero item.
+
+        Args:
+            parent_item_id: The ID of the parent item to attach the file to.
+            file_path: The path to the file to upload.
+            title: Optional. The title for the attachment item. If not provided, uses the filename.
+
+        Returns:
+            The created Item object representing the attachment.
+        """
+        # 1. Get an attachment item template
+        template = self.get_attachment_template(item_id=parent_item_id)
+
+        # Prepare attachment metadata
+        filename = os.path.basename(file_path)
+        if title is None:
+            title = filename
+
+        template['title'] = title
+        template['parentItem'] = parent_item_id
+        template['filename'] = filename
+        template['contentType'] = 'application/octet-stream' # Generic content type
+        template['linkMode'] = 'imported_file'
+
+        # 2. Create the attachment item
+        create_url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
+        create_response = requests.post(create_url, headers=self.headers, json=[template])
+        create_response.raise_for_status()
+        created_attachment_data = create_response.json()[0]
+        created_attachment_item = Item.from_api_response(created_attachment_data)
+
+        # 3. Upload the file content
+        file_upload_url = created_attachment_data['links']['file']['href']
+        with open(file_path, 'rb') as f:
+            file_content = f.read()
+
+        upload_headers = self.headers.copy()
+        upload_headers['Content-Type'] = 'application/octet-stream'
+        upload_response = requests.put(file_upload_url, headers=upload_headers, data=file_content)
+        upload_response.raise_for_status()
+
+        return created_attachment_item
+
+    def get_attachment_template(self, item_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Retrieve an attachment item template from the Zotero API.
+
+        Args:
+            item_id: Optional. The ID of the parent item for which to get the attachment template.
+
+        Returns:
+            A dictionary representing the attachment item template.
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/new'
+        params = {'itemType': 'attachment'}
+        if item_id:
+            params['linkMode'] = 'imported_url' # Or 'imported_file' depending on the use case
+            params['parentItem'] = item_id
+
+        response = requests.get(url, headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.json()
+
     def get_collections(self) -> List[Collection]:
         """
         Retrieve collections from the Zotero library.
