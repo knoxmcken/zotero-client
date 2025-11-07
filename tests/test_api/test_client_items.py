@@ -387,3 +387,74 @@ def test_download_attachment_no_file_link(mock_get, mock_client):
 
     with pytest.raises(ValueError, match=f"Attachment {attachment_id} does not have a downloadable file."):
         mock_client.download_attachment(attachment_id, output_path)
+
+@patch('zotero_client.api.client.openai.OpenAI')
+@patch('zotero_client.api.client.ZoteroClient.get_item')
+def test_summarize_item_content(mock_get_item, mock_openai, mock_client):
+    mock_client.openai_api_key = "test_openai_key"
+    item_id = "ITEMTOSUMMARIZE"
+    item_title = "A Study on Advanced AI"
+    item_abstract = "This paper explores the latest advancements in artificial intelligence, focusing on machine learning and neural networks."
+    expected_summary = "The paper discusses recent AI progress, particularly in machine learning and neural networks."
+
+    mock_item = Item(
+        key=item_id,
+        version=1,
+        item_type="journalArticle",
+        title=item_title,
+        creators=[],
+        date="2023",
+        url="",
+        abstract_note=item_abstract
+    )
+    mock_get_item.return_value = mock_item
+
+    mock_chat_completion = Mock()
+    mock_chat_completion.choices = [Mock()]
+    mock_chat_completion.choices[0].message.content = expected_summary
+    mock_openai.return_value.chat.completions.create.return_value = mock_chat_completion
+
+    summary = mock_client.summarize_item_content(item_id)
+
+    mock_get_item.assert_called_once_with(item_id)
+    mock_openai.assert_called_once_with(api_key="test_openai_key")
+    mock_openai.return_value.chat.completions.create.assert_called_once_with(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "Summarize the following text:"},
+            {"role": "user", "content": f"{item_title}\n\nAbstract: {item_abstract}"}
+        ]
+    )
+    assert summary == expected_summary
+
+@patch('zotero_client.api.client.ZoteroClient.get_item')
+def test_summarize_item_content_no_openai_key(mock_get_item, mock_client):
+    mock_client.openai_api_key = None
+    item_id = "ITEMTOSUMMARIZE"
+
+    with pytest.raises(ValueError, match="OpenAI API key is not configured."):
+        mock_client.summarize_item_content(item_id)
+
+@patch('zotero_client.api.client.openai.OpenAI')
+@patch('zotero_client.api.client.ZoteroClient.get_item')
+def test_summarize_item_content_openai_error(mock_get_item, mock_openai, mock_client):
+    mock_client.openai_api_key = "test_openai_key"
+    item_id = "ITEMTOSUMMARIZE"
+    item_title = "A Study on Advanced AI"
+
+    mock_item = Item(
+        key=item_id,
+        version=1,
+        item_type="journalArticle",
+        title=item_title,
+        creators=[],
+        date="2023",
+        url="",
+        abstract_note=None
+    )
+    mock_get_item.return_value = mock_item
+
+    mock_openai.return_value.chat.completions.create.side_effect = Exception("API connection error")
+
+    with pytest.raises(RuntimeError, match="OpenAI API error: API connection error"):
+        mock_client.summarize_item_content(item_id)

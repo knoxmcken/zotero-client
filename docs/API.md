@@ -202,6 +202,23 @@ citations = client.get_citations(['ITEM123', 'ITEM456'], style='apa', format='te
 print(citations)
 ```
 
+#### `summarize_item_content(item_id: str, prompt: str = "Summarize the following text:") -> str`
+
+Summarize the content of a Zotero item using OpenAI.
+
+**Parameters:**
+- `item_id` (str): The ID of the item to summarize.
+- `prompt` (str, optional): The prompt to send to the OpenAI model. Defaults to "Summarize the following text:".
+
+**Returns:**
+- A string containing the summary.
+
+**Example:**
+```python
+summary = client.summarize_item_content('ITEM123', prompt="Provide a concise summary of:")
+print(summary)
+```
+
 #### `get_attachment_template(item_id: Optional[str] = None) -> Dict[str, Any]:
 
 #### `get_collections() -> List[Collection]`
@@ -442,6 +459,23 @@ Generate citations and bibliographies.
 ```bash
 cl citations generate --item-ids ITEM123,ITEM456 --style apa --format text
 cl citations generate --item-ids ITEM789 --style "chicago-fullnote-bibliography" --locale fr-FR
+```
+
+### `cl ai`
+
+AI-powered features.
+
+**Commands:**
+- `summarize`: Summarize Zotero item content using OpenAI.
+
+**Options for `summarize`:**
+- `--item-id` (str, required): The ID of the Zotero item to summarize.
+- `--prompt` (str, optional): Custom prompt for the OpenAI model. Defaults to "Summarize the following text:".
+
+**Examples for `summarize`:**
+```bash
+cl ai summarize --item-id ITEM123
+cl ai summarize --item-id ITEM456 --prompt "Provide a detailed summary of the key findings:"
 ```
 
 ## Response Format

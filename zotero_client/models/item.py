@@ -12,6 +12,7 @@ class Item:
     version: int
     parent_item: Optional[str] = None
     links: Dict[str, Any] = None
+    abstract_note: Optional[str] = None
 
     @classmethod
     def from_api_response(cls, data: Dict[str, Any]) -> 'Item':
@@ -26,5 +27,6 @@ class Item:
             url=item_data.get('url', ''),
             version=data.get('version', 0), # Version is at the top level of the response
             parent_item=item_data.get('parentItem', None),
-            links=data.get('links', {})
+            links=data.get('links', {}),
+            abstract_note=item_data.get('abstractNote', None)
         )
