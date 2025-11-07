@@ -212,3 +212,65 @@ def test_download_attachment_cli_value_error(mock_exit, mock_zotero_client, mock
     captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
     assert "Error: Item is not an attachment.\n" in captured_output
     mock_exit.assert_called_once_with(1)
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+def test_generate_citations_cli(mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    
+    mock_client_instance = MagicMock()
+    mock_client_instance.get_citations.return_value = "<p>Formatted Citation</p>"
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock(
+        item_ids="ITEM123,ITEM456",
+        style="apa",
+        format="html",
+        locale="en-US"
+    )
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import generate_citations_cli
+        generate_citations_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_client_instance.get_citations.assert_called_once_with(
+        ["ITEM123", "ITEM456"],
+        "apa",
+        "html",
+        "en-US"
+    )
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "<p>Formatted Citation</p>\n" in captured_output
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+@patch('sys.exit')
+def test_generate_citations_cli_error(mock_exit, mock_zotero_client, mock_load_config):
+    mock_load_config.return_value = ("test_api_key", "test_user_id")
+    
+    mock_client_instance = MagicMock()
+    mock_client_instance.get_citations.side_effect = Exception("API Error")
+    mock_zotero_client.return_value = mock_client_instance
+
+    mock_args = MagicMock(
+        item_ids="ITEM123",
+        style="apa",
+        format="text",
+        locale=None
+    )
+
+    with patch('sys.stdout', new=MagicMock()) as mock_stdout:
+        from zotero_client.cli.main import generate_citations_cli
+        generate_citations_cli(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id")
+    mock_client_instance.get_citations.assert_called_once_with(
+        ["ITEM123"],
+        "apa",
+        "text",
+        None
+    )
+    captured_output = "".join([c.args[0] for c in mock_stdout.write.call_args_list])
+    assert "Error generating citations: API Error\n" in captured_output
+    mock_exit.assert_called_once_with(1)

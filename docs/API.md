@@ -183,6 +183,25 @@ downloaded_file = client.download_attachment('ATTACHMENT123', './downloaded_file
 print(f"Downloaded attachment to: {downloaded_file}")
 ```
 
+#### `get_citations(item_ids: List[str], style: str, format: str = 'html', locale: Optional[str] = None) -> str`
+
+Generate formatted citations or a bibliography for a list of item IDs.
+
+**Parameters:**
+- `item_ids` (List[str]): A list of Zotero item keys for which to generate citations.
+- `style` (str): The CSL style to use (e.g., 'apa', 'chicago-fullnote-bibliography').
+- `format` (str, optional): The output format ('html' or 'text'). Defaults to 'html'.
+- `locale` (str, optional): The bibliography locale (e.g., 'en-US').
+
+**Returns:**
+- A string containing the formatted citations or bibliography.
+
+**Example:**
+```python
+citations = client.get_citations(['ITEM123', 'ITEM456'], style='apa', format='text')
+print(citations)
+```
+
 #### `get_attachment_template(item_id: Optional[str] = None) -> Dict[str, Any]:
 
 #### `get_collections() -> List[Collection]`
@@ -404,6 +423,25 @@ cl attachments upload --parent-item-id ANOTHERITEM456 --file-path another_file.t
 **Examples for `download`:**
 ```bash
 cl attachments download --attachment-id ATTACHMENT123 --output-path ./downloaded_file.pdf
+```
+
+### `cl citations`
+
+Generate citations and bibliographies.
+
+**Commands:**
+- `generate`: Generate formatted citations or bibliography.
+
+**Options for `generate`:**
+- `--item-ids` (str, required): Comma-separated list of Zotero item keys (e.g., "ITEM1,ITEM2").
+- `--style` (str, required): The CSL style to use (e.g., "apa", "chicago-fullnote-bibliography").
+- `--format` (str, optional): The output format ("html" or "text"). Defaults to "html".
+- `--locale` (str, optional): The bibliography locale (e.g., "en-US").
+
+**Examples for `generate`:**
+```bash
+cl citations generate --item-ids ITEM123,ITEM456 --style apa --format text
+cl citations generate --item-ids ITEM789 --style "chicago-fullnote-bibliography" --locale fr-FR
 ```
 
 ## Response Format

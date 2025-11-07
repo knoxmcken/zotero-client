@@ -117,6 +117,22 @@ def delete_item_cli(args):
         sys.exit(1)
 
 
+def generate_citations_cli(args):
+    """
+    Generate formatted citations or a bibliography for Zotero items via CLI.
+    """
+    api_key, user_id = load_config()
+    client = ZoteroClient(api_key, user_id)
+
+    try:
+        item_ids = args.item_ids.split(',')
+        citations = client.get_citations(item_ids, args.style, args.format, args.locale)
+        print(citations)
+    except Exception as e:
+        print(f"Error generating citations: {e}")
+        sys.exit(1)
+
+
 def download_attachment_cli(args):
     """
     Download an attachment file from Zotero via CLI.
@@ -504,8 +520,6 @@ def main():
         default=None,
         help='Optional: The title for the attachment item (defaults to filename)'
     )
-    upload_attachment_parser.set_defaults(func=upload_attachment_cli)
-
     # Download attachment sub-command
     download_attachment_parser = attachments_subparsers.add_parser('download', help='Download an attachment file')
     download_attachment_parser.add_argument(
@@ -521,6 +535,39 @@ def main():
         help='The path where the downloaded file should be saved'
     )
     download_attachment_parser.set_defaults(func=download_attachment_cli)
+
+    # Citations command
+    citations_parser = subparsers.add_parser('citations', help='Generate citations and bibliographies')
+    citations_subparsers = citations_parser.add_subparsers(dest='citation_command', help='Citation commands')
+
+    # Generate citations sub-command
+    generate_citations_parser = citations_subparsers.add_parser('generate', help='Generate formatted citations or bibliography')
+    generate_citations_parser.add_argument(
+        '--item-ids',
+        type=str,
+        required=True,
+        help='Comma-separated list of Zotero item keys (e.g., "ITEM1,ITEM2")'
+    )
+    generate_citations_parser.add_argument(
+        '--style',
+        type=str,
+        required=True,
+        help='The CSL style to use (e.g., "apa", "chicago-fullnote-bibliography")'
+    )
+    generate_citations_parser.add_argument(
+        '--format',
+        type=str,
+        default='html',
+        choices=['html', 'text'],
+        help='The output format ("html" or "text"). Defaults to "html".'
+    )
+    generate_citations_parser.add_argument(
+        '--locale',
+        type=str,
+        default=None,
+        help='Optional: The bibliography locale (e.g., "en-US")'
+    )
+    generate_citations_parser.set_defaults(func=generate_citations_cli)
     
     args = parser.parse_args()
     
@@ -542,6 +589,10 @@ def main():
 
     if args.command == 'attachments' and not args.attachment_command:
         attachments_parser.print_help()
+        sys.exit(1)
+
+    if args.command == 'citations' and not args.citation_command:
+        citations_parser.print_help()
         sys.exit(1)
     
     args.func(args)

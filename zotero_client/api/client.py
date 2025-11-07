@@ -223,6 +223,33 @@ class ZoteroClient:
 
         return output_path
 
+    def get_citations(self, item_ids: List[str], style: str, format: str = 'html', locale: Optional[str] = None) -> str:
+        """
+        Generate formatted citations or a bibliography for a list of item IDs.
+
+        Args:
+            item_ids: A list of Zotero item keys for which to generate citations.
+            style: The CSL style to use (e.g., 'apa', 'chicago-fullnote-bibliography').
+            format: The output format ('html' or 'text'). Defaults to 'html'.
+            locale: Optional. The bibliography locale (e.g., 'en-US').
+
+        Returns:
+            A string containing the formatted citations or bibliography.
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
+        params = {
+            'itemKey': ','.join(item_ids),
+            'style': style,
+            'format': format,
+            'citation': '1' # Request individual citations
+        }
+        if locale:
+            params['locale'] = locale
+
+        response = requests.get(url, headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.text
+
     def get_attachment_template(self, item_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Retrieve an attachment item template from the Zotero API.
