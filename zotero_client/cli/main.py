@@ -56,9 +56,9 @@ def list_items(args):
         limit=args.limit,
         q=args.query,
         qmode=args.qmode,
-        item_type=args.item_type,
+        item_type=getattr(args, 'item_type', None),
         tag=args.tag,
-        include_trashed=args.include_trashed
+        include_trashed=getattr(args, 'include_trashed', None)
     )
     
     for item in items:
@@ -359,6 +359,35 @@ def main():
         type=int,
         default=None,
         help='Maximum number of items to retrieve'
+    )
+    list_items_parser.add_argument(
+        '--query',
+        type=str,
+        default=None,
+        help='Search query for quick search across titles and creator fields'
+    )
+    list_items_parser.add_argument(
+        '--qmode',
+        type=str,
+        default=None,
+        help='Query mode for search (e.g., "everything" for full-text search)'
+    )
+    list_items_parser.add_argument(
+        '--item-type',
+        type=str,
+        default=None,
+        help='Filter by item type (e.g., "book", "journalArticle")'
+    )
+    list_items_parser.add_argument(
+        '--tag',
+        type=str,
+        default=None,
+        help='Filter by tag'
+    )
+    list_items_parser.add_argument(
+        '--include-trashed',
+        action='store_true',
+        help='Include trashed items in the results'
     )
     list_items_parser.set_defaults(func=list_items)
 
@@ -680,3 +709,8 @@ def main():
         sys.exit(1)
     
     args.func(args)
+
+
+if __name__ == '__main__':
+    main()
+
