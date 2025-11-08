@@ -69,9 +69,10 @@ def list_items(args):
     table = Table(title="Zotero Items")
     table.add_column("Item Type", style="cyan")
     table.add_column("Title", style="magenta")
+    table.add_column("Item ID", style="green")
     
     for item in items:
-        table.add_row(item.item_type, item.title)
+        table.add_row(item.item_type, item.title, item.key)
         
     console.print(table)
 
