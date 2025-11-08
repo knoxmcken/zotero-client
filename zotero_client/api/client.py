@@ -331,6 +331,23 @@ class ZoteroClient:
                     item_map[duplicate_key] = item
         return duplicates
 
+    def export_items(self, format: str = 'bibtex') -> str:
+        """
+        Export items from the Zotero library to a specified format.
+
+        Args:
+            format: The export format ('bibtex' or 'csv'). Defaults to 'bibtex'.
+
+        Returns:
+            A string containing the exported data.
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
+        params = {'format': format}
+        
+        response = requests.get(url, headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.text
+
     def get_attachment_template(self, item_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Retrieve an attachment item template from the Zotero API.

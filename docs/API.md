@@ -235,6 +235,26 @@ for key, items in duplicates.items():
         print(f"  - {item.title} (Key: {item.key})")
 ```
 
+#### `export_items(format: str = 'bibtex') -> str`
+
+Export items from the Zotero library to a specified format.
+
+**Parameters:**
+- `format` (str, optional): The export format ('bibtex' or 'csv'). Defaults to 'bibtex'.
+
+**Returns:**
+- A string containing the exported data.
+
+**Example:**
+```python
+bibtex_data = client.export_items(format='bibtex')
+print(bibtex_data)
+
+csv_data = client.export_items(format='csv')
+with open('library.csv', 'w', encoding='utf-8') as f:
+    f.write(csv_data)
+```
+
 #### `get_attachment_template(item_id: Optional[str] = None) -> Dict[str, Any]:
 
 #### `get_collections() -> List[Collection]`
@@ -504,6 +524,20 @@ Manage duplicate items.
 **Examples for `find`:**
 ```bash
 cl duplicates find
+```
+
+### `cl export`
+
+Export items from your Zotero library.
+
+**Options:**
+- `--format` (str): The export format ('bibtex' or 'csv'). Defaults to 'bibtex'.
+- `--output` (str, optional): The path to the output file.
+
+**Examples:**
+```bash
+cl export --format bibtex
+cl export --format csv --output my_library.csv
 ```
 
 ## Response Format

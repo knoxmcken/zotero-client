@@ -165,6 +165,26 @@ def find_duplicates_cli(args):
         sys.exit(1)
 
 
+def export_items_cli(args):
+    """
+    Export items from the Zotero library to a specified format via CLI.
+    """
+    api_key, user_id, openai_api_key = load_config()
+    client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
+
+    try:
+        exported_data = client.export_items(format=args.format)
+        if args.output:
+            with open(args.output, 'w', encoding='utf-8') as f:
+                f.write(exported_data)
+            print(f"Successfully exported items to {args.output}")
+        else:
+            print(exported_data)
+    except Exception as e:
+        print(f"Error exporting items: {e}")
+        sys.exit(1)
+
+
 def generate_citations_cli(args):
     """
     Generate formatted citations or a bibliography for Zotero items via CLI.
@@ -673,6 +693,23 @@ def main():
     # Find duplicates sub-command
     find_duplicates_parser = duplicates_subparsers.add_parser('find', help='Find potential duplicate items')
     find_duplicates_parser.set_defaults(func=find_duplicates_cli)
+
+    # Export command
+    export_parser = subparsers.add_parser('export', help='Export items from the library')
+    export_parser.add_argument(
+        '--format',
+        type=str,
+        default='bibtex',
+        choices=['bibtex', 'csv'],
+        help='The export format ("bibtex" or "csv"). Defaults to "bibtex".'
+    )
+    export_parser.add_argument(
+        '--output',
+        type=str,
+        default=None,
+        help='Optional: The path to the output file.'
+    )
+    export_parser.set_defaults(func=export_items_cli)
     
     args = parser.parse_args()
     
