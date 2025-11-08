@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "zotero-client"
 version = "0.1.1"
 authors = [
-  { name="Your Name", email="your.email@example.com" },
+  { name="Knox McKen", email="knox.mcken@iue.ac.pg" },
 ]
 description = "A Python client for interacting with the Zotero API"
 readme = "README.md"
