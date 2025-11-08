@@ -4,8 +4,14 @@ import argparse
 import os
 import sys
 import json
+from rich.console import Console
+from rich.prompt import Prompt
+from rich.table import Table
+from rich.panel import Panel
 from dotenv import load_dotenv, set_key
 from zotero_client.api.client import ZoteroClient
+
+console = Console()
 
 
 def load_config():
@@ -16,7 +22,7 @@ def load_config():
     openai_api_key = os.getenv('OPENAI_API_KEY')
     
     if not api_key or not user_id:
-        print("Error: ZOTERO_API_KEY and ZOTERO_USER_ID must be set in .env file")
+        console.print("[bold red]Error:[/] ZOTERO_API_KEY and ZOTERO_USER_ID must be set in .env file")
         sys.exit(1)
     
     return api_key, user_id, openai_api_key
@@ -26,14 +32,13 @@ def configure_cli(args):
     """
     Interactively configure Zotero API key and user ID.
     """
-    print("--- Zotero Client Configuration ---")
-    api_key = None
-    user_id = None
+    api_key, user_id = None, None
+    console.print(Panel.fit("[bold magenta]Zotero Client Configuration[/]", border_style="green"))
     try:
-        api_key = input("Enter your Zotero API Key: ")
-        user_id = input("Enter your Zotero User ID: ")
+        api_key = Prompt.ask("Enter your Zotero API Key")
+        user_id = Prompt.ask("Enter your Zotero User ID")
     except KeyboardInterrupt:
-        print("\nConfiguration cancelled.")
+        console.print("\n[bold yellow]Configuration cancelled.[/]")
         sys.exit(0)
 
     if api_key is not None and user_id is not None:
@@ -41,8 +46,8 @@ def configure_cli(args):
         set_key(env_path, 'ZOTERO_API_KEY', api_key)
         set_key(env_path, 'ZOTERO_USER_ID', user_id)
 
-        print(f"Configuration saved to {env_path}")
-        print("Please restart your shell or run 'load_dotenv()' if you are in an interactive session.")
+        console.print(f"\n[bold green]Configuration saved to {env_path}[/]")
+        console.print("[italic]Please restart your shell or run 'load_dotenv()' if you are in an interactive session.[/]")
 
 
 def list_items(args):
@@ -61,8 +66,14 @@ def list_items(args):
         include_trashed=getattr(args, 'include_trashed', None)
     )
     
+    table = Table(title="Zotero Items")
+    table.add_column("Item Type", style="cyan")
+    table.add_column("Title", style="magenta")
+    
     for item in items:
-        print(f"[{item.item_type}] {item.title}")
+        table.add_row(item.item_type, item.title)
+        
+    console.print(table)
 
 
 def create_item_cli(args):
@@ -153,15 +164,20 @@ def find_duplicates_cli(args):
     try:
         duplicates = client.find_duplicates()
         if duplicates:
-            print("Potential duplicate items found:")
+            console.print("[bold yellow]Potential duplicate items found:[/]")
             for key, items in duplicates.items():
-                print(f"\nGroup: {key}")
+                table = Table(title=f"Group: {key}")
+                table.add_column("Item Type", style="cyan")
+                table.add_column("Title", style="magenta")
+                table.add_column("Key", style="green")
+                table.add_column("Date", style="yellow")
                 for item in items:
-                    print(f"  - [{item.item_type}] {item.title} (Key: {item.key}, Date: {item.date})")
+                    table.add_row(item.item_type, item.title, item.key, item.date)
+                console.print(table)
         else:
-            print("No potential duplicate items found.")
+            console.print("[bold green]No potential duplicate items found.[/]")
     except Exception as e:
-        print(f"Error finding duplicates: {e}")
+        console.print(f"[bold red]Error finding duplicates:[/] {e}")
         sys.exit(1)
 
 
@@ -246,9 +262,16 @@ def list_attachments(args):
 
     attachments = client.get_attachments(item_id=args.item_id, limit=args.limit)
 
+    table = Table(title="Zotero Attachments")
+    table.add_column("Title", style="cyan")
+    table.add_column("Key", style="magenta")
+    table.add_column("Parent Item", style="green")
+
     for attachment in attachments:
         parent_item_key = attachment.parent_item if hasattr(attachment, 'parent_item') else 'N/A'
-        print(f"[Attachment] {attachment.title} (Key: {attachment.key}, Parent: {parent_item_key})")
+        table.add_row(attachment.title, attachment.key, parent_item_key)
+        
+    console.print(table)
 
 
 def list_collections(args):
@@ -259,8 +282,14 @@ def list_collections(args):
     
     collections = client.get_collections()
     
+    table = Table(title="Zotero Collections")
+    table.add_column("Collection Name", style="cyan")
+    table.add_column("Key", style="magenta")
+    
     for collection in collections:
-        print(f"{collection.name} (key: {collection.key})")
+        table.add_row(collection.name, collection.key)
+        
+    console.print(table)
 
 
 def create_collection_cli(args):
@@ -325,8 +354,15 @@ def list_tags(args):
 
     tags = client.get_tags(item_id=args.item_id)
 
+    table = Table(title="Zotero Tags")
+    table.add_column("Tag", style="cyan")
+    table.add_column("Type", style="magenta")
+
     for tag in tags:
-        print(f"{tag.tag} (Type: {'Manual' if tag.type == 1 else 'Automatic'})")
+        tag_type = 'Manual' if tag.type == 1 else 'Automatic'
+        table.add_row(tag.tag, tag_type)
+        
+    console.print(table)
 
 
 def add_tags_to_item_cli(args):
