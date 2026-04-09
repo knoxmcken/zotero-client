@@ -9,9 +9,11 @@ from zotero_client.cli.main import main
 class TestExportCLI(unittest.TestCase):
     """Test cases for the `cl export` command."""
 
+    @patch('zotero_client.cli.main.load_config')
     @patch('zotero_client.cli.main.ZoteroClient')
-    def test_export_bibtex_stdout(self, MockZoteroClient):
+    def test_export_bibtex_stdout(self, MockZoteroClient, mock_load_config):
         """Test exporting to BibTeX format and printing to stdout."""
+        mock_load_config.return_value = ('test_api_key', 'test_user_id', None)
         mock_client = MockZoteroClient.return_value
         mock_client.export_items.return_value = '@book{key1, title="Test Book"}'
 
@@ -20,9 +22,11 @@ class TestExportCLI(unittest.TestCase):
                 main()
                 self.assertEqual(mock_stdout.getvalue().strip(), '@book{key1, title="Test Book"}')
 
+    @patch('zotero_client.cli.main.load_config')
     @patch('zotero_client.cli.main.ZoteroClient')
-    def test_export_csv_to_file(self, MockZoteroClient):
+    def test_export_csv_to_file(self, MockZoteroClient, mock_load_config):
         """Test exporting to CSV format and saving to a file."""
+        mock_load_config.return_value = ('test_api_key', 'test_user_id', None)
         mock_client = MockZoteroClient.return_value
         mock_client.export_items.return_value = 'key,title\nkey1,"Test Book"'
         output_file = 'test_export.csv'

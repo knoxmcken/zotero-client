@@ -91,6 +91,11 @@ class TestIntegrationCLI:
     
     def test_cli_items_list(self):
         """Test CLI items list command."""
+        api_key = os.getenv('ZOTERO_API_KEY')
+        user_id = os.getenv('ZOTERO_USER_ID')
+        if not api_key or not user_id:
+            pytest.skip("Zotero API credentials not set")
+        
         import subprocess
         result = subprocess.run(
             ['zot', 'items', 'list', '--limit', '3'],
@@ -103,6 +108,11 @@ class TestIntegrationCLI:
     
     def test_cli_collections_list(self):
         """Test CLI collections list command."""
+        api_key = os.getenv('ZOTERO_API_KEY')
+        user_id = os.getenv('ZOTERO_USER_ID')
+        if not api_key or not user_id:
+            pytest.skip("Zotero API credentials not set")
+        
         import subprocess
         result = subprocess.run(
             ['zot', 'collections', 'list'],
@@ -114,6 +124,11 @@ class TestIntegrationCLI:
     
     def test_cli_tags_list(self):
         """Test CLI tags list command."""
+        api_key = os.getenv('ZOTERO_API_KEY')
+        user_id = os.getenv('ZOTERO_USER_ID')
+        if not api_key or not user_id:
+            pytest.skip("Zotero API credentials not set")
+        
         import subprocess
         result = subprocess.run(
             ['zot', 'tags', 'list'],
