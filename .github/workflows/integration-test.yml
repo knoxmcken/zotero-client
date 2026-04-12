@@ -48,7 +48,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-cov
-      
+          pip install -e .
+
       - name: Create .env file from secrets
         run: |
           echo "ZOTERO_API_KEY=${{ secrets.ZOTERO_API_KEY }}" > .env
@@ -68,26 +69,29 @@ jobs:
           ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
           ZOTERO_LIBRARY_TYPE: users
         run: |
-          pytest tests/test_api/ -v --tb=short
+          pytest tests/test_api/ -v --tb=short -m integration
       
       - name: Test CLI with real credentials
         env:
           ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
           ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
         run: |
-          # Install the package
-          pip install -e .
-          
-          # Test basic CLI commands
+          # Always test the help command (no credentials required)
           echo "Testing CLI help..."
           zot --help
-          
+
+          # Skip live API calls if credentials are not configured
+          if [ -z "$ZOTERO_API_KEY" ] || [ -z "$ZOTERO_USER_ID" ]; then
+            echo "⚠️  Zotero credentials not configured — skipping live API CLI tests"
+            exit 0
+          fi
+
           echo "Testing CLI items list..."
           zot items list --limit 5
-          
+
           echo "Testing CLI collections list..."
           zot collections list
-          
+
           echo "Testing CLI tags list..."
           zot tags list
       
