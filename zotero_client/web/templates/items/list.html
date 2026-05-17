@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Items — Zotero Client{% endblock %}
+
+{% block content %}
+<h2 class="mb-3">Items</h2>
+
+<form method="GET" action="{{ url_for('items.list_items') }}" class="row g-2 mb-4">
+  <div class="col-sm-4">
+    <input type="text" name="q" class="form-control" placeholder="Search…" value="{{ q }}">
+  </div>
+  <div class="col-sm-2">
+    <input type="text" name="type" class="form-control" placeholder="Type (e.g. book)" value="{{ item_type }}">
+  </div>
+  <div class="col-sm-2">
+    <input type="text" name="tag" class="form-control" placeholder="Tag" value="{{ tag }}">
+  </div>
+  <div class="col-sm-2">
+    <input type="number" name="limit" class="form-control" placeholder="Limit" value="{{ limit }}" min="1">
+  </div>
+  <div class="col-sm-2">
+    <button type="submit" class="btn btn-primary w-100">Search</button>
+  </div>
+</form>
+
+{% if items %}
+<table class="table table-hover table-bordered align-middle">
+  <thead class="table-dark">
+    <tr>
+      <th>Type</th>
+      <th>Title</th>
+      <th>Date</th>
+      <th>Key</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td><span class="badge bg-secondary">{{ item.item_type }}</span></td>
+      <td>
+        <a href="{{ url_for('items.item_detail', item_id=item.key) }}">{{ item.title or '(no title)' }}</a>
+      </td>
+      <td>{{ item.date or '—' }}</td>
+      <td><code>{{ item.key }}</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="text-muted small">{{ items | length }} item(s) returned.</p>
+{% else %}
+<div class="alert alert-info">No items found.</div>
+{% endif %}
+{% endblock %}

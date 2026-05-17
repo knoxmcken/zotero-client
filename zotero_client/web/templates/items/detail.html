@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}{{ item.title or item.key }} — Zotero Client{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <a href="{{ url_for('items.list_items') }}" class="btn btn-sm btn-outline-secondary mb-2">← Back to Items</a>
+    <h2>{{ item.title or '(no title)' }}</h2>
+  </div>
+  <button type="button" class="btn btn-danger btn-sm"
+          data-bs-toggle="modal" data-bs-target="#deleteModal">
+    Delete
+  </button>
+</div>
+
+<dl class="row">
+  <dt class="col-sm-3">Type</dt>
+  <dd class="col-sm-9"><span class="badge bg-secondary">{{ item.item_type }}</span></dd>
+
+  <dt class="col-sm-3">Key</dt>
+  <dd class="col-sm-9"><code>{{ item.key }}</code></dd>
+
+  <dt class="col-sm-3">Date</dt>
+  <dd class="col-sm-9">{{ item.date or '—' }}</dd>
+
+  {% if item.url %}
+  <dt class="col-sm-3">URL</dt>
+  <dd class="col-sm-9"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.url }}</a></dd>
+  {% endif %}
+
+  {% if item.creators %}
+  <dt class="col-sm-3">Creators</dt>
+  <dd class="col-sm-9">
+    {% for c in item.creators %}
+      {% if c.get('lastName') %}{{ c.get('firstName', '') }} {{ c['lastName'] }}{% elif c.get('name') %}{{ c['name'] }}{% endif %}{% if not loop.last %}; {% endif %}
+    {% endfor %}
+  </dd>
+  {% endif %}
+
+  {% if item.abstract_note %}
+  <dt class="col-sm-3">Abstract</dt>
+  <dd class="col-sm-9">{{ item.abstract_note }}</dd>
+  {% endif %}
+</dl>
+
+{% if tags %}
+<h5 class="mt-4">Tags</h5>
+<div class="mb-3">
+  {% for tag in tags %}
+    <span class="badge bg-info text-dark me-1">{{ tag.tag }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if attachments %}
+<h5 class="mt-4">Attachments</h5>
+<ul class="list-group mb-3">
+  {% for att in attachments %}
+  <li class="list-group-item d-flex justify-content-between align-items-center">
+    {{ att.title or att.key }}
+    <span class="badge bg-secondary">{{ att.item_type }}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<!-- Delete confirmation modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Confirm Delete</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        Are you sure you want to delete <strong>{{ item.title or item.key }}</strong>?
+        This action cannot be undone.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form method="POST" action="{{ url_for('items.delete_item', item_id=item.key) }}">
+          <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
