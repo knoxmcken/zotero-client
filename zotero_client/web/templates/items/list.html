@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}Items — Zotero Client{% endblock %}
+
+{% block content %}
+<h2>Items</h2>
+
+<form class="row g-2 mb-4" method="get" action="{{ url_for('items.list_items') }}">
+  <div class="col-md-4">
+    <input class="form-control" name="q" placeholder="Search…" value="{{ q }}">
+  </div>
+  <div class="col-md-2">
+    <input class="form-control" name="type" placeholder="Type" value="{{ item_type }}">
+  </div>
+  <div class="col-md-2">
+    <input class="form-control" name="tag" placeholder="Tag" value="{{ tag }}">
+  </div>
+  <div class="col-md-1">
+    <input class="form-control" name="limit" placeholder="Limit" type="number" min="1" value="{{ limit }}">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-primary" type="submit">Search</button>
+  </div>
+</form>
+
+{% if items %}
+<table class="table table-hover">
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Title</th>
+      <th>Date</th>
+      <th>Key</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td><span class="badge bg-secondary">{{ item.item_type }}</span></td>
+      <td><a href="{{ url_for('items.item_detail', item_id=item.key) }}">{{ item.title }}</a></td>
+      <td>{{ item.date }}</td>
+      <td><code>{{ item.key }}</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="text-muted">No items found.</p>
+{% endif %}
+{% endblock %}

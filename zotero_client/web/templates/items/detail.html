@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ item.title }} — Zotero Client{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <h2>{{ item.title }}</h2>
+  <button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete</button>
+</div>
+
+<dl class="row">
+  <dt class="col-sm-3">Type</dt>
+  <dd class="col-sm-9"><span class="badge bg-secondary">{{ item.item_type }}</span></dd>
+
+  <dt class="col-sm-3">Key</dt>
+  <dd class="col-sm-9"><code>{{ item.key }}</code></dd>
+
+  <dt class="col-sm-3">Date</dt>
+  <dd class="col-sm-9">{{ item.date or '—' }}</dd>
+
+  <dt class="col-sm-3">URL</dt>
+  <dd class="col-sm-9">
+    {% if item.url %}
+      <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.url }}</a>
+    {% else %}—{% endif %}
+  </dd>
+
+  {% if item.abstract_note %}
+  <dt class="col-sm-3">Abstract</dt>
+  <dd class="col-sm-9">{{ item.abstract_note }}</dd>
+  {% endif %}
+
+  {% if item.creators %}
+  <dt class="col-sm-3">Creators</dt>
+  <dd class="col-sm-9">
+    {% for c in item.creators %}
+      {{ c.get('firstName', '') }} {{ c.get('lastName', c.get('name', '')) }}{% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </dd>
+  {% endif %}
+</dl>
+
+{% if tags %}
+<h5>Tags</h5>
+<div class="mb-3">
+  {% for tag in tags %}
+    <span class="badge bg-info text-dark me-1">{{ tag.tag }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if attachments %}
+<h5>Attachments</h5>
+<ul class="list-group mb-3">
+  {% for att in attachments %}
+    <li class="list-group-item">{{ att.title }} <code class="ms-2">{{ att.key }}</code></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<a href="{{ url_for('items.list_items') }}" class="btn btn-secondary">Back to list</a>
+
+<!-- Delete confirmation modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Confirm Delete</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        Are you sure you want to delete <strong>{{ item.title }}</strong>?
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form method="post" action="{{ url_for('items.delete_item', item_id=item.key) }}">
+          <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
