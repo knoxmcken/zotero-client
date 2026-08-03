@@ -24,6 +24,7 @@ class TestItemsList:
         item = make_item()
         with patch('zotero_client.web.routes.items.get_client') as mock_gc:
             mock_gc.return_value.get_items.return_value = [item]
+            mock_gc.return_value.get_tags.return_value = []
             resp = client.get('/items')
         assert resp.status_code == 200
         assert b'Test Item' in resp.data
@@ -31,6 +32,7 @@ class TestItemsList:
     def test_items_list_passes_search_params(self, client):
         with patch('zotero_client.web.routes.items.get_client') as mock_gc:
             mock_gc.return_value.get_items.return_value = []
+            mock_gc.return_value.get_tags.return_value = []
             client.get('/items?q=python&type=book&tag=ml&limit=5')
             mock_gc.return_value.get_items.assert_called_once_with(
                 q='python', item_type='book', tag='ml', limit=5
@@ -39,14 +41,39 @@ class TestItemsList:
     def test_items_list_empty_state(self, client):
         with patch('zotero_client.web.routes.items.get_client') as mock_gc:
             mock_gc.return_value.get_items.return_value = []
+            mock_gc.return_value.get_tags.return_value = []
             resp = client.get('/items')
         assert b'No items found' in resp.data
 
     def test_items_list_api_error_flashes(self, client):
         with patch('zotero_client.web.routes.items.get_client') as mock_gc:
             mock_gc.return_value.get_items.side_effect = Exception('API down')
+            mock_gc.return_value.get_tags.return_value = []
             resp = client.get('/items')
         assert b'Error fetching items' in resp.data
+
+    def test_items_list_tag_datalist_populated(self, client):
+        item = make_item()
+        with patch('zotero_client.web.routes.items.get_client') as mock_gc:
+            mock_gc.return_value.get_items.return_value = [item]
+            mock_gc.return_value.get_tags.return_value = [
+                Tag(tag='science', type=0),
+                Tag(tag='python', type=1),
+            ]
+            resp = client.get('/items')
+        assert resp.status_code == 200
+        assert b'science' in resp.data
+        assert b'python' in resp.data
+
+    def test_items_list_tags_fetch_failure_still_renders(self, client):
+        item = make_item()
+        with patch('zotero_client.web.routes.items.get_client') as mock_gc:
+            mock_gc.return_value.get_items.return_value = [item]
+            mock_gc.return_value.get_tags.side_effect = Exception('tags API down')
+            resp = client.get('/items')
+        assert resp.status_code == 200
+        assert b'Test Item' in resp.data
+        assert b'Error fetching items' not in resp.data
 
     def test_items_list_503_when_no_creds(self, client_no_creds):
         resp = client_no_creds.get('/items')

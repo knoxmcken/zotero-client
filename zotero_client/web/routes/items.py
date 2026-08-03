@@ -35,7 +35,12 @@ def list_items():
         flash(f'Error fetching items: {e}', 'danger')
         items = []
 
-    return render_template('items/list.html', items=items, q=q or '', item_type=item_type or '', tag=tag or '', limit=limit or '')
+    try:
+        all_tags = client.get_tags()
+    except Exception:
+        all_tags = []
+
+    return render_template('items/list.html', items=items, q=q or '', item_type=item_type or '', tag=tag or '', limit=limit or '', all_tags=all_tags)
 
 
 @items_bp.route('/items/<item_id>')
