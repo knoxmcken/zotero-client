@@ -92,7 +92,9 @@ class ZoteroClient:
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
         response = requests.post(url, headers=self.headers, json=[item_data])
         response.raise_for_status()
-        return Item.from_api_response(response.json()[0])
+        result = response.json()
+        item_key = result['success']['0']
+        return self.get_item(item_key)
 
     def update_item(self, item_id: str, item_data: Dict[str, Any], if_unmodified_since_version: Optional[int] = None) -> Item:
         """
@@ -368,15 +370,21 @@ class ZoteroClient:
         response.raise_for_status()
         return response.json()
 
-    def get_collections(self) -> List[Collection]:
+    def get_collections(self, limit: Optional[int] = None) -> List[Collection]:
         """
         Retrieve collections from the Zotero library.
-        
+
+        Args:
+            limit: Maximum number of collections to retrieve.
+
         Returns:
             List of Collection objects
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections'
-        response = requests.get(url, headers=self.headers)
+        params = {}
+        if limit:
+            params['limit'] = limit
+        response = requests.get(url, headers=self.headers, params=params)
         response.raise_for_status()
         return [Collection.from_api_response(collection_data) for collection_data in response.json()]
 

@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+
+{% block title %}Items — Zotero Client{% endblock %}
+
+{% block content %}
+<h2>Items</h2>
+
+<form class="row g-2 mb-4" method="get" action="{{ url_for('items.list_items') }}">
+  <div class="col-md-4">
+    <input class="form-control" name="q" placeholder="Search…" value="{{ q }}">
+  </div>
+  <div class="col-md-2">
+    <input class="form-control" name="type" placeholder="Type" value="{{ item_type }}"
+           list="item-type-list" autocomplete="off">
+  </div>
+  <div class="col-md-2">
+    <input class="form-control" name="tag" placeholder="Tag" value="{{ tag }}"
+           list="tag-list" autocomplete="off">
+  </div>
+  <div class="col-md-1">
+    <input class="form-control" name="limit" placeholder="Limit" type="text"
+           inputmode="numeric" pattern="[0-9]*" value="{{ limit }}"
+           list="limit-list" autocomplete="off">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-primary" type="submit">Search</button>
+  </div>
+
+  <datalist id="item-type-list">
+    <option value="artwork">
+    <option value="attachment">
+    <option value="audioRecording">
+    <option value="bill">
+    <option value="blogPost">
+    <option value="book">
+    <option value="bookSection">
+    <option value="case">
+    <option value="computerProgram">
+    <option value="conferencePaper">
+    <option value="dictionaryEntry">
+    <option value="document">
+    <option value="email">
+    <option value="encyclopediaArticle">
+    <option value="film">
+    <option value="forumPost">
+    <option value="hearing">
+    <option value="instantMessage">
+    <option value="interview">
+    <option value="journalArticle">
+    <option value="letter">
+    <option value="magazineArticle">
+    <option value="manuscript">
+    <option value="map">
+    <option value="newspaperArticle">
+    <option value="note">
+    <option value="patent">
+    <option value="podcast">
+    <option value="presentation">
+    <option value="radioBroadcast">
+    <option value="regulation">
+    <option value="report">
+    <option value="statute">
+    <option value="televisionBroadcast">
+    <option value="thesis">
+    <option value="videoRecording">
+    <option value="webpage">
+  </datalist>
+
+  <datalist id="limit-list">
+    <option value="5">
+    <option value="10">
+    <option value="25">
+    <option value="50">
+    <option value="100">
+    <option value="200">
+  </datalist>
+
+  <datalist id="tag-list">
+    {% for t in all_tags | sort(attribute='tag') %}
+    <option value="{{ t.tag }}">
+    {% endfor %}
+  </datalist>
+</form>
+
+{% if items %}
+<table class="table table-hover">
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Title</th>
+      <th>Date</th>
+      <th>Key</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td><span class="badge bg-secondary">{{ item.item_type }}</span></td>
+      <td><a href="{{ url_for('items.item_detail', item_id=item.key) }}">{{ item.title }}</a></td>
+      <td>{{ item.date }}</td>
+      <td><code>{{ item.key }}</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="text-muted">No items found.</p>
+{% endif %}
+{% endblock %}

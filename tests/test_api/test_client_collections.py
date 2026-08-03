@@ -26,7 +26,8 @@ def test_get_collections(mock_get, mock_client):
 
     mock_get.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections',
-        headers=mock_client.headers
+        headers=mock_client.headers,
+        params={}
     )
     assert len(collections) == 1
     assert isinstance(collections[0], Collection)

@@ -398,6 +398,14 @@ def remove_tags_from_item_cli(args):
         sys.exit(1)
 
 
+def start_web_server(args):
+    """Start the Flask web UI server."""
+    from zotero_client.web import create_app
+    app = create_app()
+    console.print(f"[bold green]Starting Web UI at http://{args.host}:{args.port}[/]")
+    app.run(host=args.host, port=args.port, debug=args.debug)
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -730,6 +738,13 @@ def main():
     # Find duplicates sub-command
     find_duplicates_parser = duplicates_subparsers.add_parser('find', help='Find potential duplicate items')
     find_duplicates_parser.set_defaults(func=find_duplicates_cli)
+
+    # Web UI command
+    web_parser = subparsers.add_parser('web', help='Start the web UI server')
+    web_parser.add_argument('--host', type=str, default='127.0.0.1', help='Host to bind (default: 127.0.0.1)')
+    web_parser.add_argument('--port', type=int, default=5000, help='Port to bind (default: 5000)')
+    web_parser.add_argument('--debug', action='store_true', help='Enable Flask debug mode')
+    web_parser.set_defaults(func=start_web_server)
 
     # Export command
     export_parser = subparsers.add_parser('export', help='Export items from the library')
