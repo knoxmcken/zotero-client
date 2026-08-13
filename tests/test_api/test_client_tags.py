@@ -1,11 +1,6 @@
 import pytest
 from unittest.mock import Mock, patch
-from zotero_client.api.client import ZoteroClient
 from zotero_client.models.tag import Tag
-
-@pytest.fixture
-def mock_client():
-    return ZoteroClient(api_key="test_key", user_id="test_user")
 
 @patch('requests.get')
 def test_get_tags_all(mock_get, mock_client):

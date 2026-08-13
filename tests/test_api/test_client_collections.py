@@ -1,11 +1,6 @@
 import pytest
 from unittest.mock import Mock, patch
-from zotero_client.api.client import ZoteroClient
 from zotero_client.models.collection import Collection
-
-@pytest.fixture
-def mock_client():
-    return ZoteroClient(api_key="test_key", user_id="test_user")
 
 @patch('requests.get')
 def test_get_collections(mock_get, mock_client):
@@ -37,15 +32,20 @@ def test_get_collections(mock_get, mock_client):
 def test_create_collection(mock_post, mock_client):
     mock_response = Mock()
     mock_response.status_code = 200
-    mock_response.json.return_value = [{
-        "key": "NEWCOLLECTION123",
-        "version": 1,
-        "data": {
-            "key": "NEWCOLLECTION123",
-            "name": "New Test Collection",
-            "parentCollection": False
-        }
-    }]
+    mock_response.json.return_value = {
+        "successful": {
+            "0": {
+                "key": "NEWCOLLECTION123",
+                "version": 1,
+                "data": {
+                    "key": "NEWCOLLECTION123",
+                    "name": "New Test Collection",
+                    "parentCollection": False
+                }
+            }
+        },
+        "failed": {}
+    }
     mock_post.return_value = mock_response
 
     collection_data = {"name": "New Test Collection"}

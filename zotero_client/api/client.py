@@ -29,7 +29,15 @@ class ZoteroClient:
         self.openai_api_key = openai_api_key
         self.library_type = library_type
         self.headers = {'Zotero-API-Key': self.api_key}
-    
+
+    def _parse_single_write_response(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        if result.get('failed'):
+            raise RuntimeError(f"Zotero write failed: {result['failed'].get('0')}")
+        try:
+            return result['successful']['0']
+        except KeyError:
+            raise RuntimeError(f"Unexpected write response: {result}")
+
     def get_items(self, limit: Optional[int] = None, q: Optional[str] = None, qmode: Optional[str] = None, item_type: Optional[str] = None, tag: Optional[str] = None, include_trashed: Optional[bool] = None) -> List[Item]:
         """
         Retrieve items from the Zotero library with advanced search capabilities.
@@ -183,7 +191,7 @@ class ZoteroClient:
         create_url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
         create_response = requests.post(create_url, headers=self.headers, json=[template])
         create_response.raise_for_status()
-        created_attachment_data = create_response.json()[0]
+        created_attachment_data = self._parse_single_write_response(create_response.json())
         created_attachment_item = Item.from_api_response(created_attachment_data)
 
         # 3. Upload the file content
@@ -400,7 +408,7 @@ class ZoteroClient:
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections'
         response = requests.post(url, headers=self.headers, json=[collection_data])
         response.raise_for_status()
-        return Collection.from_api_response(response.json()[0])
+        return Collection.from_api_response(self._parse_single_write_response(response.json()))
 
     def update_collection(self, collection_id: str, collection_data: Dict[str, Any], if_unmodified_since_version: Optional[int] = None) -> Collection:
         """

@@ -1,12 +1,7 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import builtins
-from zotero_client.api.client import ZoteroClient
 from zotero_client.models.item import Item
-
-@pytest.fixture
-def mock_client():
-    return ZoteroClient(api_key="test_key", user_id="test_user")
 
 @patch('requests.post')
 def test_create_item(mock_post, mock_client):
@@ -27,8 +22,6 @@ def test_create_item(mock_post, mock_client):
                 }
             }
         },
-        "success": {"0": "NEWITEM123"},
-        "unchanged": {},
         "failed": {}
     }
     mock_post.return_value = mock_response
@@ -209,22 +202,27 @@ def test_upload_attachment(mock_open, mock_basename, mock_get, mock_post, mock_p
     mock_get.return_value.raise_for_status.return_value = None
 
     # Mock create_item (requests.post)
-    mock_post.return_value.json.return_value = [{
-        "key": "UPLOADATTACHMENT1",
-        "version": 1,
-        "data": {
-            "key": "UPLOADATTACHMENT1",
-            "itemType": "attachment",
-            "title": title, # Dynamically set title
-            "parentItem": "PARENTITEM123",
-            "filename": "test_file.pdf",
-            "contentType": "application/pdf",
-            "linkMode": "imported_file"
+    mock_post.return_value.json.return_value = {
+        "successful": {
+            "0": {
+                "key": "UPLOADATTACHMENT1",
+                "version": 1,
+                "data": {
+                    "key": "UPLOADATTACHMENT1",
+                    "itemType": "attachment",
+                    "title": title,
+                    "parentItem": "PARENTITEM123",
+                    "filename": "test_file.pdf",
+                    "contentType": "application/pdf",
+                    "linkMode": "imported_file"
+                },
+                "links": {
+                    "file": {"href": "https://api.zotero.org/users/test_user/items/UPLOADATTACHMENT1/file"}
+                }
+            }
         },
-        "links": {
-            "file": {"href": "https://api.zotero.org/users/test_user/items/UPLOADATTACHMENT1/file"}
-        }
-    }]
+        "failed": {}
+    }
     mock_post.return_value.raise_for_status.return_value = None
 
     # Mock file content
@@ -237,10 +235,6 @@ def test_upload_attachment(mock_open, mock_basename, mock_get, mock_post, mock_p
 
     # Mock upload file (requests.put)
     mock_put.return_value.raise_for_status.return_value = None
-
-    parent_item_id = "PARENTITEM123"
-    file_path = "/path/to/test_file.pdf"
-    title = "My Custom Attachment Title"
 
     uploaded_attachment = mock_client.upload_attachment(parent_item_id, file_path, title)
 
