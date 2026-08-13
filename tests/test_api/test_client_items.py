@@ -8,33 +8,30 @@ from zotero_client.models.item import Item
 def mock_client():
     return ZoteroClient(api_key="test_key", user_id="test_user")
 
-@patch('requests.get')
 @patch('requests.post')
-def test_create_item(mock_post, mock_get, mock_client):
-    mock_post_response = Mock()
-    mock_post_response.status_code = 200
-    mock_post_response.json.return_value = {
+def test_create_item(mock_post, mock_client):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "successful": {
+            "0": {
+                "key": "NEWITEM123",
+                "version": 1,
+                "data": {
+                    "key": "NEWITEM123",
+                    "itemType": "book",
+                    "title": "New Test Book",
+                    "creators": [],
+                    "date": "2024",
+                    "url": ""
+                }
+            }
+        },
         "success": {"0": "NEWITEM123"},
         "unchanged": {},
         "failed": {}
     }
-    mock_post.return_value = mock_post_response
-
-    mock_get_response = Mock()
-    mock_get_response.status_code = 200
-    mock_get_response.json.return_value = {
-        "key": "NEWITEM123",
-        "version": 1,
-        "data": {
-            "key": "NEWITEM123",
-            "itemType": "book",
-            "title": "New Test Book",
-            "creators": [],
-            "date": "2024",
-            "url": ""
-        }
-    }
-    mock_get.return_value = mock_get_response
+    mock_post.return_value = mock_response
 
     item_data = {"itemType": "book", "title": "New Test Book"}
     created_item = mock_client.create_item(item_data)
@@ -43,10 +40,6 @@ def test_create_item(mock_post, mock_get, mock_client):
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
         headers=mock_client.headers,
         json=[item_data]
-    )
-    mock_get.assert_called_once_with(
-        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/NEWITEM123',
-        headers=mock_client.headers
     )
     assert isinstance(created_item, Item)
     assert created_item.key == "NEWITEM123"

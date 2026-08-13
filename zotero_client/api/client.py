@@ -93,8 +93,7 @@ class ZoteroClient:
         response = requests.post(url, headers=self.headers, json=[item_data])
         response.raise_for_status()
         result = response.json()
-        item_key = result['success']['0']
-        return self.get_item(item_key)
+        return Item.from_api_response(result['successful']['0'])
 
     def update_item(self, item_id: str, item_data: Dict[str, Any], if_unmodified_since_version: Optional[int] = None) -> Item:
         """
