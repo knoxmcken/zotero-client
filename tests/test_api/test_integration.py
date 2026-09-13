@@ -6,8 +6,59 @@ These tests require valid API credentials set as environment variables:
 """
 
 import os
+import time
+
 import pytest
+import requests
+
 from zotero_client.api.client import ZoteroClient
+
+# Zotero can return a transient 404 for an object immediately after a write
+# while the new version propagates. Tolerate that window rather than failing
+# the run on the first attempt.
+_WRITE_PROPAGATION_ATTEMPTS = 5
+_WRITE_PROPAGATION_DELAY = 1.0
+
+
+def _status_of(exc):
+    """Return the HTTP status carried by a requests error, if any."""
+    return getattr(getattr(exc, 'response', None), 'status_code', None)
+
+
+def _wait_until_readable(client, key):
+    """Poll until a freshly created item can be read back; return attempt count."""
+    last_error = None
+    for attempt in range(1, _WRITE_PROPAGATION_ATTEMPTS + 1):
+        try:
+            client.get_item(key)
+            return attempt
+        except requests.exceptions.HTTPError as exc:
+            last_error = exc
+            if _status_of(exc) != 404:
+                raise
+            time.sleep(_WRITE_PROPAGATION_DELAY)
+    pytest.fail(
+        f"item {key} was created but never became readable after "
+        f"{_WRITE_PROPAGATION_ATTEMPTS} attempts: {last_error}"
+    )
+
+
+def _delete_with_retry(client, key, version):
+    """Delete an item, tolerating a transient 404; return attempt count."""
+    last_error = None
+    for attempt in range(1, _WRITE_PROPAGATION_ATTEMPTS + 1):
+        try:
+            client.delete_item(key, version)
+            return attempt
+        except requests.exceptions.HTTPError as exc:
+            last_error = exc
+            if _status_of(exc) != 404:
+                raise
+            time.sleep(_WRITE_PROPAGATION_DELAY)
+    pytest.fail(
+        f"delete of {key} kept returning 404 after "
+        f"{_WRITE_PROPAGATION_ATTEMPTS} attempts: {last_error}"
+    )
 
 
 @pytest.fixture
@@ -55,19 +106,35 @@ class TestIntegrationCRUD:
     """Test CRUD operations with real API."""
     
     def test_create_and_delete_item(self, real_client):
-        """Test creating and then deleting an item."""
+        """Test creating and then deleting an item.
+
+        Uses a book rather than a standalone note. Notes created through
+        this API key never persist: POST returns 200 and the library
+        version advances, but the item is never readable (with or without
+        includeTrashed) and never appears in a listing. That is a
+        Zotero-side behaviour, not a client bug -- see
+        scripts/diagnose_zotero_write.py.
+        """
         # Create a test item
         test_item = {
-            "itemType": "note",
-            "note": "<p>Integration test item - please delete</p>"
+            "itemType": "book",
+            "title": "Integration test item - please delete",
         }
-        
+
         created = real_client.create_item(test_item)
         assert created is not None
-        assert created.key is not None
-        
-        # Clean up - delete the item
-        real_client.delete_item(created.key, created.version)
+        assert created.key, "create_item did not return an item key"
+
+        # Confirm the new item is actually addressable before cleaning up,
+        # and record how many attempts the write needed (useful in CI logs).
+        read_attempts = _wait_until_readable(real_client, created.key)
+        delete_attempts = _delete_with_retry(
+            real_client, created.key, created.version
+        )
+        print(
+            f"create -> read ({read_attempts} attempt(s)) -> "
+            f"delete ({delete_attempts} attempt(s)) OK for key {created.key}"
+        )
     
     def test_get_item_by_key(self, real_client):
         """Test retrieving a specific item by its key."""

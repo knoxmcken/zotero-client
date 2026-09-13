@@ -63,6 +63,15 @@ jobs:
             exit 1
           fi
       
+      - name: Diagnose Zotero write path (create -> delete)
+        env:
+          ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
+          ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
+          ZOTERO_LIBRARY_TYPE: users
+        # Diagnostic only: prints HTTP status/body per call, never fails the build.
+        continue-on-error: true
+        run: python scripts/diagnose_zotero_write.py
+
       - name: Run integration tests
         env:
           ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
@@ -108,4 +117,5 @@ jobs:
         with:
           file: ./coverage.xml
           flags: integration
+          token: ${{ secrets.CODECOV_TOKEN }}
         continue-on-error: true
