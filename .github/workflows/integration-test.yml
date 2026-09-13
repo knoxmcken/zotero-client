@@ -117,4 +117,5 @@ jobs:
         with:
           file: ./coverage.xml
           flags: integration
+          token: ${{ secrets.CODECOV_TOKEN }}
         continue-on-error: true
