@@ -5,16 +5,16 @@ Prints the HTTP status and response body for each call in the write
 path. Credentials are never printed (the Zotero key and user id are
 also masked by GitHub Actions).
 
-Earlier runs established that POST returns 200 with a created object
-(and the library version advances), but the returned key is never
-readable and never appears in listings. This version tests the two
-remaining explanations:
+Established so far: POST returns 200 with a created object and the
+library version advances, but the created key is never readable (404,
+with or without includeTrashed) and never appears in any listing -- for
+every documented write contract, over 12s+.
 
-  H1  the object is committed but hidden -- e.g. it lands in the trash,
-      so probe with includeTrashed=1
-  H2  the write contract matters -- compare the client's unversioned
-      write with the two documented contracts (Zotero-Write-Token, or
-      If-Unmodified-Since-Version)
+Every successful create so far used itemType="note". This run varies
+the item type to check whether notes specifically fail to persist:
+
+  control  note   (what the client assigns in create_item today)
+  probe    book   (an ordinary bibliographic item)
 
 Exit code is always 0 -- diagnostic only, must not fail the build.
 """
@@ -22,13 +22,12 @@ Exit code is always 0 -- diagnostic only, must not fail the build.
 import os
 import sys
 import time
-import uuid
 
 import requests
 
 BASE_URL = "https://api.zotero.org"
 BODY_LIMIT = 300
-POLL_ATTEMPTS = 4
+POLL_ATTEMPTS = 3
 POLL_DELAY = 3.0
 
 
@@ -55,36 +54,39 @@ def library_version(items_url, headers):
     return response.headers.get("Last-Modified-Version")
 
 
-def listing_keys(items_url, headers, include_trashed=False, limit=10):
-    params = {"sort": "dateAdded", "direction": "desc", "limit": limit}
-    if include_trashed:
-        params["includeTrashed"] = 1
-    response = requests.get(items_url, headers=headers, params=params, timeout=30)
+def listing_keys(items_url, headers, limit=10):
+    response = requests.get(
+        items_url,
+        headers=headers,
+        params={"sort": "dateAdded", "direction": "desc", "limit": limit},
+        timeout=30,
+    )
     if response.status_code != 200:
         return None
     return [item.get("key") for item in response.json()]
 
 
-def probe(key, items_url, headers, label):
-    """Report visibility of one created key; return attempts-to-readable or None."""
+def create_and_probe(label, payload, items_url, headers):
+    """Create one item and report everything we can learn about it."""
+    response = show(f"[{label}] POST /items", requests.post(items_url, headers=headers, json=[payload], timeout=30))
+    key = extract_key(response)
+    print(f"[{label}] parsed key={key!r}")
+    if not key:
+        return None
+
     item_url = f"{items_url}/{key}"
-    show(
-        f"[{label}] GET    /items/{key}?includeTrashed=1",
-        requests.get(item_url, headers=headers, params={"includeTrashed": 1}, timeout=30),
-    )
-    readable_after = None
     for attempt in range(1, POLL_ATTEMPTS + 1):
         status = requests.get(item_url, headers=headers, timeout=30).status_code
         print(f"[{label}] poll {attempt}: HTTP {status}")
         if status == 200:
-            readable_after = attempt
-            break
+            print(f"[{label}] RESULT: readable after {attempt} attempt(s)")
+            return key
         time.sleep(POLL_DELAY)
-    listed = listing_keys(items_url, headers)
-    listed_trashed = listing_keys(items_url, headers, include_trashed=True)
-    print(f"[{label}] in listing: {key in (listed or [])}")
-    print(f"[{label}] in listing (includeTrashed): {key in (listed_trashed or [])}")
-    return readable_after
+
+    print(f"[{label}] RESULT: never readable")
+    listed = listing_keys(items_url, headers) or []
+    print(f"[{label}] in newest-10 listing: {key in listed}")
+    return key
 
 
 def main():
@@ -103,69 +105,24 @@ def main():
 
     headers = {"Zotero-API-Key": api_key}
     items_url = f"{BASE_URL}/{library_type}/{user_id}/items"
-    baseline = library_version(items_url, headers)
-    print(f"library Last-Modified-Version={baseline!r}")
+    print(f"library Last-Modified-Version={library_version(items_url, headers)!r}")
 
-    note = "<p>CI write-path diagnostic</p>"
-    created = {}
-
-    # Variant A: exactly what the client does today.
-    key_a = extract_key(
-        show(
-            "A POST /items (unversioned, no token)",
-            requests.post(items_url, headers=headers, json=[{"itemType": "note", "note": note}], timeout=30),
-        )
+    keys = {}
+    keys["note"] = create_and_probe(
+        "note", {"itemType": "note", "note": "<p>CI write-path diagnostic (note)</p>"}, items_url, headers
     )
-    print(f"A parsed key={key_a!r}")
-
-    # Variant B: unversioned with the documented Zotero-Write-Token.
-    token_headers = dict(headers)
-    token_headers["Zotero-Write-Token"] = uuid.uuid4().hex
-    key_b = extract_key(
-        show(
-            "B POST /items (unversioned + Zotero-Write-Token)",
-            requests.post(
-                items_url,
-                headers=token_headers,
-                json=[{"itemType": "note", "note": note}],
-                timeout=30,
-            ),
-        )
+    keys["book"] = create_and_probe(
+        "book", {"itemType": "book", "title": "CI write-path diagnostic (book)"}, items_url, headers
     )
-    print(f"B parsed key={key_b!r}")
-
-    # Variant C: versioned write against a freshly read library version.
-    key_c = None
-    for attempt in (1, 2):
-        current = library_version(items_url, headers)
-        versioned_headers = dict(headers)
-        versioned_headers["If-Unmodified-Since-Version"] = str(current)
-        response = show(
-            f"C POST /items (versioned {current}, attempt {attempt})",
-            requests.post(
-                items_url,
-                headers=versioned_headers,
-                json=[{"itemType": "note", "note": note}],
-                timeout=30,
-            ),
-        )
-        if response.status_code == 200:
-            key_c = extract_key(response)
-            break
-    print(f"C parsed key={key_c!r}")
-
-    for label, key in (("A", key_a), ("B", key_b), ("C", key_c)):
-        if not key:
-            continue
-        created[label] = key
-        probe(key, items_url, headers, label)
 
     print("RESULT summary:")
-    for label, key in created.items():
-        print(f"RESULT   variant {label}: key={key}")
+    for item_type, key in keys.items():
+        print(f"RESULT   {item_type}: key={key}")
 
     # Clean up anything that did become readable.
-    for label, key in created.items():
+    for item_type, key in keys.items():
+        if not key:
+            continue
         item_url = f"{items_url}/{key}"
         current = requests.get(item_url, headers=headers, timeout=30)
         if current.status_code == 200:
@@ -173,10 +130,7 @@ def main():
             delete_headers = dict(headers)
             if version:
                 delete_headers["If-Unmodified-Since-Version"] = str(version)
-            show(
-                f"cleanup DELETE /items/{key}",
-                requests.delete(item_url, headers=delete_headers, timeout=30),
-            )
+            show(f"cleanup DELETE /items/{key}", requests.delete(item_url, headers=delete_headers, timeout=30))
     return 0
 
 
