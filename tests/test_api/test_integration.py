@@ -106,11 +106,19 @@ class TestIntegrationCRUD:
     """Test CRUD operations with real API."""
     
     def test_create_and_delete_item(self, real_client):
-        """Test creating and then deleting an item."""
+        """Test creating and then deleting an item.
+
+        Uses a book rather than a standalone note. Notes created through
+        this API key never persist: POST returns 200 and the library
+        version advances, but the item is never readable (with or without
+        includeTrashed) and never appears in a listing. That is a
+        Zotero-side behaviour, not a client bug -- see
+        scripts/diagnose_zotero_write.py.
+        """
         # Create a test item
         test_item = {
-            "itemType": "note",
-            "note": "<p>Integration test item - please delete</p>"
+            "itemType": "book",
+            "title": "Integration test item - please delete",
         }
 
         created = real_client.create_item(test_item)
