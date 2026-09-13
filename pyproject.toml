@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/zotero-app"
+"Homepage" = "https://github.com/knoxmcken/zotero-client"
 
 [project.scripts]
 zot = "zotero_client.cli.main:main"

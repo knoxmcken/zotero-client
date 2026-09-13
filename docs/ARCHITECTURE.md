@@ -5,7 +5,7 @@ This document outlines the proposed architecture for the Zotero API client appli
 ### Proposed Directory Structure
 
 ```
-zotero-app/
+zotero-client/
 ├── zotero_client/
 │   ├── api/
 │   │   ├── __init__.py
