@@ -1,3 +1,6 @@
+import hashlib
+import os
+
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import builtins
@@ -32,17 +35,25 @@ def test_create_item(mock_post, mock_client):
     mock_post.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
         headers=mock_client.headers,
-        json=[item_data]
+        json=[item_data],
+        timeout=mock_client.TIMEOUT,
     )
     assert isinstance(created_item, Item)
     assert created_item.key == "NEWITEM123"
     assert created_item.title == "New Test Book"
 
+@patch('requests.get')
 @patch('requests.put')
-def test_update_item(mock_put, mock_client):
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = [{
+def test_update_item(mock_put, mock_get, mock_client):
+    """A successful PUT answers 204 No Content, so the item is re-read."""
+    put_response = Mock()
+    put_response.status_code = 204
+    put_response.content = b''  # no body on success
+    put_response.raise_for_status.return_value = None
+    mock_put.return_value = put_response
+
+    get_response = Mock()
+    get_response.json.return_value = {
         "key": "UPDATEITEM456",
         "version": 2,
         "data": {
@@ -53,8 +64,9 @@ def test_update_item(mock_put, mock_client):
             "date": "2023",
             "url": ""
         }
-    }]
-    mock_put.return_value = mock_response
+    }
+    get_response.raise_for_status.return_value = None
+    mock_get.return_value = get_response
 
     item_id = "UPDATEITEM456"
     updated_data = {"title": "Updated Article Title"}
@@ -66,7 +78,13 @@ def test_update_item(mock_put, mock_client):
     mock_put.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{item_id}',
         headers=expected_headers,
-        json=updated_data
+        json=updated_data,
+        timeout=mock_client.TIMEOUT,
+    )
+    mock_get.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{item_id}',
+        headers=mock_client.headers,
+        timeout=mock_client.TIMEOUT,
     )
     assert isinstance(updated_item, Item)
     assert updated_item.title == "Updated Article Title"
@@ -86,7 +104,8 @@ def test_delete_item(mock_delete, mock_client):
     expected_headers['If-Unmodified-Since-Version'] = str(version)
     mock_delete.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{item_id}',
-        headers=expected_headers
+        headers=expected_headers,
+        timeout=mock_client.TIMEOUT,
     )
 
 @patch('requests.get')
@@ -118,18 +137,20 @@ def test_get_items_advanced_search(mock_get, mock_client):
     )
 
     expected_params = {
-        'limit': 5,
         'q': "search term",
         'qmode': "everything",
         'itemType': "journalArticle",
         'tag': "biology",
-        'includeTrashed': 1
+        'includeTrashed': 1,
+        'limit': 5,
+        'start': 0
     }
 
     mock_get.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
         headers=mock_client.headers,
-        params=expected_params
+        params=expected_params,
+        timeout=mock_client.TIMEOUT,
     )
     assert len(items) == 1
     assert items[0].title == "Search Result Article"
@@ -157,11 +178,12 @@ def test_get_attachments(mock_get, mock_client):
     # Test getting all attachments
     attachments = mock_client.get_attachments(limit=1)
 
-    expected_params_all = {'itemType': 'attachment', 'limit': 1}
+    expected_params_all = {'itemType': 'attachment', 'limit': 1, 'start': 0}
     mock_get.assert_called_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
         headers=mock_client.headers,
-        params=expected_params_all
+        params=expected_params_all,
+        timeout=mock_client.TIMEOUT,
     )
     assert len(attachments) == 1
     assert attachments[0].title == "Test Attachment"
@@ -171,111 +193,177 @@ def test_get_attachments(mock_get, mock_client):
     mock_get.reset_mock()
     attachments_for_item = mock_client.get_attachments(item_id="PARENTITEM123")
 
-    expected_params_item = {'itemType': 'attachment', 'parentItem': 'PARENTITEM123'}
+    expected_params_item = {'itemType': 'attachment', 'parentItem': 'PARENTITEM123', 'limit': 100, 'start': 0}
     mock_get.assert_called_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
         headers=mock_client.headers,
-        params=expected_params_item
+        params=expected_params_item,
+        timeout=mock_client.TIMEOUT,
     )
     assert len(attachments_for_item) == 1
     assert attachments_for_item[0].parent_item == "PARENTITEM123"
 
-@patch('requests.put')
 @patch('requests.post')
 @patch('requests.get')
-@patch('os.path.basename', return_value="test_file.pdf")
-@patch('builtins.open', new_callable=Mock)
-def test_upload_attachment(mock_open, mock_basename, mock_get, mock_post, mock_put, mock_client):
+def test_upload_attachment_follows_documented_flow(mock_get, mock_post, mock_client, tmp_path):
+    """Upload is create -> authorize -> POST to storage -> register."""
     parent_item_id = "PARENTITEM123"
-    file_path = "/path/to/test_file.pdf"
+    file_path = tmp_path / "paper.pdf"
+    file_bytes = b"file content"
+    file_path.write_bytes(file_bytes)
+    md5 = hashlib.md5(file_bytes).hexdigest()
     title = "My Custom Attachment Title"
 
-    # Mock get_attachment_template
-    mock_get.return_value.json.return_value = {
+    items_url = f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items'
+
+    # GET 1: attachment template
+    template_response = Mock()
+    template_response.json.return_value = {
         "itemType": "attachment",
-        "parentItem": "PARENTITEM123",
-        "linkMode": "imported_url", # Changed to imported_url
-        "contentType": "application/pdf",
-        "filename": "test_file.pdf",
-        "title": "Test Attachment"
+        "linkMode": "imported_file",
+        "title": "",
+        "filename": "",
+        "contentType": "",
+        "md5": None,
+        "mtime": None,
     }
-    mock_get.return_value.raise_for_status.return_value = None
+    template_response.raise_for_status.return_value = None
 
-    # Mock create_item (requests.post)
-    mock_post.return_value.json.return_value = {
-        "successful": {
-            "0": {
-                "key": "UPLOADATTACHMENT1",
-                "version": 1,
-                "data": {
-                    "key": "UPLOADATTACHMENT1",
-                    "itemType": "attachment",
-                    "title": title,
-                    "parentItem": "PARENTITEM123",
-                    "filename": "test_file.pdf",
-                    "contentType": "application/pdf",
-                    "linkMode": "imported_file"
-                },
-                "links": {
-                    "file": {"href": "https://api.zotero.org/users/test_user/items/UPLOADATTACHMENT1/file"}
-                }
-            }
+    # GET 2: the attachment item, read back after the upload
+    attachment_response = Mock()
+    attachment_response.json.return_value = {
+        "key": "UPLOADATTACHMENT1",
+        "version": 2,
+        "data": {
+            "key": "UPLOADATTACHMENT1",
+            "itemType": "attachment",
+            "title": title,
+            "parentItem": parent_item_id,
+            "creators": [],
+            "date": "",
+            "url": "",
         },
-        "failed": {}
     }
-    mock_post.return_value.raise_for_status.return_value = None
+    attachment_response.raise_for_status.return_value = None
+    mock_get.side_effect = [template_response, attachment_response]
 
-    # Mock file content
-    mock_file_handle = Mock()
-    mock_file_handle.read.return_value = b"file content"
-    
-    mock_open.return_value = MagicMock()
-    mock_open.return_value.__enter__.return_value = mock_file_handle
-    mock_open.return_value.__exit__.return_value = None
+    # POST 1: create the attachment item
+    create_response = Mock()
+    create_response.json.return_value = {
+        "successful": {"0": {"key": "UPLOADATTACHMENT1", "version": 1, "data": {}}},
+        "failed": {},
+    }
+    create_response.raise_for_status.return_value = None
 
-    # Mock upload file (requests.put)
-    mock_put.return_value.raise_for_status.return_value = None
+    # POST 2: authorization for the upload
+    auth_response = Mock()
+    auth_response.json.return_value = {
+        "url": "https://storage.example.com/upload",
+        "contentType": "multipart/form-data; boundary=xyz",
+        "prefix": "--xyz\r\n",
+        "suffix": "\r\n--xyz--",
+        "uploadKey": "UPLOADKEY123",
+    }
+    auth_response.raise_for_status.return_value = None
 
-    uploaded_attachment = mock_client.upload_attachment(parent_item_id, file_path, title)
+    # POST 3: the file itself, POST 4: registration
+    storage_response = Mock()
+    storage_response.raise_for_status.return_value = None
+    register_response = Mock()
+    register_response.raise_for_status.return_value = None
+    mock_post.side_effect = [create_response, auth_response, storage_response, register_response]
 
-    # Assert get_attachment_template was called
-    mock_get.assert_called_once_with(
+    uploaded = mock_client.upload_attachment(parent_item_id, str(file_path), title)
+
+    mock_get.assert_any_call(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/new',
         headers=mock_client.headers,
-        params={'itemType': 'attachment', 'linkMode': 'imported_url', 'parentItem': parent_item_id}
+        params={'itemType': 'attachment', 'linkMode': 'imported_file', 'parentItem': parent_item_id},
+        timeout=mock_client.TIMEOUT,
     )
 
-    # Assert create_item was called
-    expected_post_data = {
+    create_call = mock_post.call_args_list[0]
+    assert create_call.args[0] == items_url
+    assert create_call.kwargs['json'] == [{
         "itemType": "attachment",
-        "parentItem": parent_item_id,
         "linkMode": "imported_file",
-        "contentType": "application/octet-stream", # This is set in the client, not from template
-        "filename": "test_file.pdf",
-        "title": title
+        "title": title,
+        "filename": "paper.pdf",
+        "contentType": "application/pdf",
+        "parentItem": parent_item_id,
+        "md5": None,
+        "mtime": None,
+    }]
+
+    auth_call = mock_post.call_args_list[1]
+    assert auth_call.args[0] == f'{items_url}/UPLOADATTACHMENT1/file'
+    assert auth_call.kwargs['data'] == {
+        'md5': md5,
+        'filename': 'paper.pdf',
+        'filesize': len(file_bytes),
+        'mtime': str(int(os.path.getmtime(file_path) * 1000)),
     }
-    mock_post.assert_called_once_with(
-        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
-        headers=mock_client.headers,
-        json=[expected_post_data]
-    )
+    assert auth_call.kwargs['headers']['If-None-Match'] == '*'
 
-    # Assert file was opened
-    mock_open.assert_called_once_with(file_path, 'rb')
+    storage_call = mock_post.call_args_list[2]
+    assert storage_call.args[0] == 'https://storage.example.com/upload'
+    assert storage_call.kwargs['data'] == b'--xyz\r\n' + file_bytes + b'\r\n--xyz--'
+    assert storage_call.kwargs['headers'] == {'Content-Type': 'multipart/form-data; boundary=xyz'}
 
-    # Assert file upload was called
-    expected_upload_headers = mock_client.headers.copy()
-    expected_upload_headers['Content-Type'] = 'application/octet-stream'
-    mock_put.assert_called_once_with(
-        "https://api.zotero.org/users/test_user/items/UPLOADATTACHMENT1/file",
-        headers=expected_upload_headers,
-        data=b"file content"
-    )
+    register_call = mock_post.call_args_list[3]
+    assert register_call.args[0] == f'{items_url}/UPLOADATTACHMENT1/file'
+    assert register_call.kwargs['data'] == {'upload': 'UPLOADKEY123'}
 
-    assert isinstance(uploaded_attachment, Item)
-    assert uploaded_attachment.key == "UPLOADATTACHMENT1"
-    assert uploaded_attachment.title == title
-    assert uploaded_attachment.parent_item == parent_item_id
+    assert isinstance(uploaded, Item)
+    assert uploaded.key == "UPLOADATTACHMENT1"
+    assert uploaded.title == title
+    assert uploaded.parent_item == parent_item_id
+
+
+@patch('requests.post')
+@patch('requests.get')
+def test_upload_attachment_skips_storage_when_file_exists(mock_get, mock_post, mock_client, tmp_path):
+    """An `exists` authorization means the file is already stored."""
+    file_path = tmp_path / "paper.pdf"
+    file_path.write_bytes(b"file content")
+    items_url = f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items'
+
+    template_response = Mock()
+    template_response.json.return_value = {
+        "itemType": "attachment", "linkMode": "imported_file", "title": "",
+        "filename": "", "contentType": "", "md5": None, "mtime": None,
+    }
+    template_response.raise_for_status.return_value = None
+    attachment_response = Mock()
+    attachment_response.json.return_value = {
+        "key": "ATT1", "version": 2,
+        "data": {"key": "ATT1", "itemType": "attachment", "title": "paper.pdf",
+                 "creators": [], "date": "", "url": ""},
+    }
+    attachment_response.raise_for_status.return_value = None
+    mock_get.side_effect = [template_response, attachment_response]
+
+    create_response = Mock()
+    create_response.json.return_value = {
+        "successful": {"0": {"key": "ATT1", "version": 1, "data": {}}}, "failed": {},
+    }
+    create_response.raise_for_status.return_value = None
+    auth_response = Mock()
+    auth_response.json.return_value = {"exists": 1}
+    auth_response.raise_for_status.return_value = None
+    mock_post.side_effect = [create_response, auth_response]
+
+    uploaded = mock_client.upload_attachment("PARENTITEM123", str(file_path))
+
+    assert mock_post.call_count == 2
+    assert mock_post.call_args_list[1].args[0] == f'{items_url}/ATT1/file'
+    assert uploaded.key == "ATT1"
+
+
+def test_upload_attachment_missing_file(mock_client):
+    """The file is checked before any request is made."""
+    with pytest.raises(FileNotFoundError):
+        mock_client.upload_attachment("PARENTITEM123", "/does/not/exist.pdf")
 
 @patch('requests.get')
 @patch('builtins.open', new_callable=Mock)
@@ -323,14 +411,16 @@ def test_download_attachment(mock_open, mock_get, mock_client):
     # Assert get_item was called
     mock_get.assert_any_call(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{attachment_id}',
-        headers=mock_client.headers
+        headers=mock_client.headers,
+        timeout=mock_client.TIMEOUT,
     )
 
     # Assert file download was called
     mock_get.assert_any_call(
         "https://api.zotero.org/users/test_user/items/ATTACHMENT123/file",
         headers=mock_client.headers,
-        stream=True
+        stream=True,
+        timeout=mock_client.TIMEOUT,
     )
 
     # Assert file was opened and content written
@@ -364,13 +454,15 @@ def test_download_attachment_not_attachment(mock_get, mock_client):
     with pytest.raises(ValueError, match=f"Item {attachment_id} is not an attachment."):
         mock_client.download_attachment(attachment_id, output_path)
 
+@patch('builtins.open', new_callable=Mock)
 @patch('requests.get')
-def test_download_attachment_no_file_link(mock_get, mock_client):
+def test_download_attachment_uses_file_endpoint(mock_get, mock_open, mock_client):
+    """The file comes from /items/<key>/file; item links are not consulted."""
     attachment_id = "NOFILELINK123"
     output_path = "/tmp/output.pdf"
 
-    mock_item_response = Mock()
-    mock_item_response.json.return_value = {
+    item_response = Mock()
+    item_response.json.return_value = {
         "key": attachment_id,
         "version": 1,
         "data": {
@@ -381,13 +473,27 @@ def test_download_attachment_no_file_link(mock_get, mock_client):
             "date": "2024",
             "url": ""
         },
-        "links": {} # No file link
+        "links": {}  # no usable link, and none is needed
     }
-    mock_item_response.raise_for_status.return_value = None
-    mock_get.return_value = mock_item_response
+    item_response.raise_for_status.return_value = None
 
-    with pytest.raises(ValueError, match=f"Attachment {attachment_id} does not have a downloadable file."):
-        mock_client.download_attachment(attachment_id, output_path)
+    file_response = Mock()
+    file_response.iter_content.return_value = [b"file bytes"]
+    file_response.raise_for_status.return_value = None
+    mock_get.side_effect = [item_response, file_response]
+
+    mock_open.return_value = MagicMock()
+    mock_open.return_value.__enter__.return_value = Mock()
+    mock_open.return_value.__exit__.return_value = None
+
+    assert mock_client.download_attachment(attachment_id, output_path) == output_path
+
+    mock_get.assert_any_call(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{attachment_id}/file',
+        headers=mock_client.headers,
+        stream=True,
+        timeout=mock_client.TIMEOUT,
+    )
 
 @patch('zotero_client.api.client.openai.OpenAI')
 @patch('zotero_client.api.client.ZoteroClient.get_item')

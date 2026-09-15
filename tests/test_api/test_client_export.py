@@ -25,7 +25,8 @@ class TestZoteroClientExport(unittest.TestCase):
         mock_get.assert_called_once_with(
             f'{self.client.BASE_URL}/{self.client.library_type}/{self.client.user_id}/items',
             headers=self.client.headers,
-            params={'format': 'bibtex'}
+            params={'format': 'bibtex', 'limit': 100},
+            timeout=self.client.TIMEOUT,
         )
 
     @patch('requests.get')
@@ -42,7 +43,8 @@ class TestZoteroClientExport(unittest.TestCase):
         mock_get.assert_called_once_with(
             f'{self.client.BASE_URL}/{self.client.library_type}/{self.client.user_id}/items',
             headers=self.client.headers,
-            params={'format': 'csv'}
+            params={'format': 'csv', 'limit': 100},
+            timeout=self.client.TIMEOUT,
         )
 
 if __name__ == '__main__':
