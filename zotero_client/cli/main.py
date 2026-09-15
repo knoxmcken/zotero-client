@@ -406,8 +406,8 @@ def start_web_server(args):
     app.run(host=args.host, port=args.port, debug=args.debug)
 
 
-def main():
-    """Main CLI entry point."""
+def build_parser():
+    """Build the argument parser for the CLI."""
     parser = argparse.ArgumentParser(
         description='Zotero API Client - Interact with your Zotero library'
     )
@@ -662,6 +662,8 @@ def main():
         default=None,
         help='Optional: The title for the attachment item (defaults to filename)'
     )
+    upload_attachment_parser.set_defaults(func=upload_attachment_cli)
+
     # Download attachment sub-command
     download_attachment_parser = attachments_subparsers.add_parser('download', help='Download an attachment file')
     download_attachment_parser.add_argument(
@@ -762,7 +764,13 @@ def main():
         help='Optional: The path to the output file.'
     )
     export_parser.set_defaults(func=export_items_cli)
-    
+
+    return parser
+
+
+def main():
+    """Main CLI entry point."""
+    parser = build_parser()
     args = parser.parse_args()
     
     if not args.command:
