@@ -1,13 +1,23 @@
 """Shared fixtures for web UI tests."""
 
+import os
 import pytest
 from unittest.mock import patch
 from zotero_client.web import create_app
 
+#: The app refuses to start without FLASK_SECRET_KEY outside debug mode, so the
+#: fixtures below supply one explicitly rather than relying on a default.
+TEST_SECRET_KEY = 'test-secret-key'
+
+
+def _env_with_secret_key():
+    """Patch os.environ so create_app sees a signing key."""
+    return patch.dict(os.environ, {'FLASK_SECRET_KEY': TEST_SECRET_KEY})
+
 
 @pytest.fixture
 def app():
-    with patch('zotero_client.web.load_environment') as mock_env:
+    with _env_with_secret_key(), patch('zotero_client.web.load_environment') as mock_env:
         mock_env.return_value = {
             'api_key': 'test_key',
             'user_id': 'test_user',
@@ -25,7 +35,7 @@ def client(app):
 
 @pytest.fixture
 def app_no_creds():
-    with patch('zotero_client.web.load_environment') as mock_env:
+    with _env_with_secret_key(), patch('zotero_client.web.load_environment') as mock_env:
         mock_env.return_value = {
             'api_key': '',
             'user_id': '',
