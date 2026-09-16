@@ -8,6 +8,10 @@ credentials in `.env`. Library version moved from `2534` to `2565` during the
 investigation. Every key that was created is listed in the appendix; nothing
 readable was left behind.
 
+**Status: closed as a documented limitation (#11).** The behaviour reproduces,
+the client cannot work around it, and notes are not a current use case for this
+library (457 items, zero notes). See "Verification addendum" and "Decisions".
+
 ## Conclusion (short version)
 
 **Item type is the deciding variable, and the answer is `note`.** `book` and
@@ -32,6 +36,53 @@ record for the note's key. So the accurate statement is:
 
 We could not determine *why* the note is withheld from reads from client-side
 evidence alone. See "What this does not establish".
+
+## Verification addendum
+
+Re-verified independently after the client's write paths were corrected (#18,
+#20). Nothing below depends on the original run.
+
+**The cascade evidence reproduces.** Parent `MEHCFXRV` was created, a child note
+`PVIQR84Q` attached, the parent deleted (`204`), and `/deleted?since=2773` then
+listed **both** keys:
+
+```
+/deleted?since=2773 -> deleted keys: ['MEHCFXRV', 'PVIQR84Q']
+```
+
+A cascade can only name a key the server recorded as that parent's child, so the
+note is stored. Yet `/items/MEHCFXRV/children` returned `[]` moments *before*
+that delete.
+
+**This is not a payload problem.** The documented shape
+(`{"itemType": "note", "note": "<p>...</p>"}`), plain text, and a
+`parentItem`-attached variant all behave identically. A genuinely invalid payload
+*is* rejected properly — adding `title` returns
+`400 "'title' is not a valid field for type 'note'"` — so the `200 successful`
+responses are real validation rather than silent acceptance.
+
+**Not an API-version artefact.** Sending `Zotero-API-Version: 3` explicitly
+changes nothing.
+
+**Not a permission restriction.** `GET /keys/<key>` reports
+`{"user": {"library": true, "files": true, "write": true}, "groups": {"all": {"library": true, "write": true}}}`
+— full library read/write, with no note carve-out.
+
+**Not timing.** The seven standalone keys from the first run still return `404`
+hours later.
+
+**The signature:** the write layer (create, delete, cascade) operates on real
+stored objects, while every read path — `GET /items/<key>`, `/children`,
+`/items?itemType=note`, listings, and `includeTrashed` — excludes notes
+entirely, and permanently.
+
+**Still untested (recorded for whoever picks this up):** whether this key can
+read a note created *outside* the API. Create one in the Zotero web library and
+re-run the read checks. If the API can read it, the defect is in how notes are
+*written* and it becomes fixable client-side; if it cannot, the account is blind
+to notes and this limitation is the final word. A group-library comparison
+(10 groups are available) would localise it further, but writes into a
+student-visible library.
 
 ## Observed matrix
 
@@ -219,10 +270,32 @@ reproducible and type-specific, the *mechanism* is not determined.
    `book`/`journalArticle` create in this investigation was readable on attempt
    1. That is a real observation, not a prediction.
 
+## Decisions
+
+This issue is closed on these decisions. They supersede the recommendations
+below, which are kept for the reasoning.
+
+- **No client-side workaround for notes.** They cannot be made readable, so the
+  client should not pretend otherwise. `create_item` still accepts them (the API
+  does), and the limitation is documented here rather than papered over.
+- **`_wait_until_readable` / `_delete_with_retry`: kept, but reduced from 5
+  attempts to 2.** The suite runs against a live API where a short read-back
+  window is plausible in general, so a single retry is worth having. Five was
+  not: readable types settle on attempt 1 every round, and for notes no number
+  of retries helps — the extra attempts only delayed a genuine failure. The
+  printed attempt count stays, because that number is what exposed this.
+- **The "never persist" claim in the tests was wrong and is corrected.** The
+  objects *are* persisted; they are never *readable*. That distinction is the
+  whole finding, and the old comment asserted the opposite.
+- **The CI diagnostic keeps its default non-failing behaviour.**
+  `scripts/diagnose_zotero_write.py` still exits 0 by default so an upstream
+  change cannot break an unrelated push; `--strict` remains the opt-in. No
+  extra workflow step was added.
+
 ## Recommendations
 
-These are recommendations only; `tests/test_api/test_integration.py` is owned by
-another workstream and was deliberately not touched.
+These are the original recommendations, kept for their reasoning. The Decisions
+above are what was actually done.
 
 **`_wait_until_readable`.** It encodes a hypothesis ("a transient 404 window
 exists") that the data does not support for either outcome: for working types
