@@ -22,7 +22,8 @@ def test_get_collections(mock_get, mock_client):
     mock_get.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections',
         headers=mock_client.headers,
-        params={}
+        params={'limit': 100, 'start': 0},
+        timeout=mock_client.TIMEOUT,
     )
     assert len(collections) == 1
     assert isinstance(collections[0], Collection)
@@ -54,17 +55,25 @@ def test_create_collection(mock_post, mock_client):
     mock_post.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections',
         headers=mock_client.headers,
-        json=[collection_data]
+        json=[collection_data],
+        timeout=mock_client.TIMEOUT,
     )
     assert isinstance(created_collection, Collection)
     assert created_collection.key == "NEWCOLLECTION123"
     assert created_collection.name == "New Test Collection"
 
+@patch('requests.get')
 @patch('requests.put')
-def test_update_collection(mock_put, mock_client):
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = [{
+def test_update_collection(mock_put, mock_get, mock_client):
+    """A successful PUT answers 204 No Content, so the collection is re-read."""
+    put_response = Mock()
+    put_response.status_code = 204
+    put_response.content = b''  # no body on success
+    put_response.raise_for_status.return_value = None
+    mock_put.return_value = put_response
+
+    get_response = Mock()
+    get_response.json.return_value = {
         "key": "UPDATECOLLECTION456",
         "version": 2,
         "data": {
@@ -72,8 +81,9 @@ def test_update_collection(mock_put, mock_client):
             "name": "Updated Collection Name",
             "parentCollection": False
         }
-    }]
-    mock_put.return_value = mock_response
+    }
+    get_response.raise_for_status.return_value = None
+    mock_get.return_value = get_response
 
     collection_id = "UPDATECOLLECTION456"
     updated_data = {"name": "Updated Collection Name"}
@@ -85,7 +95,13 @@ def test_update_collection(mock_put, mock_client):
     mock_put.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections/{collection_id}',
         headers=expected_headers,
-        json=updated_data
+        json=updated_data,
+        timeout=mock_client.TIMEOUT,
+    )
+    mock_get.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections/{collection_id}',
+        headers=mock_client.headers,
+        timeout=mock_client.TIMEOUT,
     )
     assert isinstance(updated_collection, Collection)
     assert updated_collection.name == "Updated Collection Name"
@@ -105,5 +121,6 @@ def test_delete_collection(mock_delete, mock_client):
     expected_headers['If-Unmodified-Since-Version'] = str(version)
     mock_delete.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections/{collection_id}',
-        headers=expected_headers
+        headers=expected_headers,
+        timeout=mock_client.TIMEOUT,
     )

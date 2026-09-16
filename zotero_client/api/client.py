@@ -1,9 +1,16 @@
 """Zotero API client implementation."""
 
-import requests
-from typing import List, Dict, Optional, Any
+import hashlib
+import mimetypes
 import os
+import time
+from typing import List, Dict, Optional, Any
+from urllib.parse import quote
+
 import openai
+import requests
+from bs4 import BeautifulSoup
+
 from zotero_client.models.item import Item
 from zotero_client.models.collection import Collection
 from zotero_client.models.tag import Tag
@@ -13,6 +20,15 @@ class ZoteroClient:
     """Client for interacting with the Zotero API."""
     
     BASE_URL = 'https://api.zotero.org'
+
+    #: Connect/read timeout applied to every request.
+    TIMEOUT = (10, 30)
+
+    #: The Web API returns at most 100 objects per request.
+    PAGE_SIZE = 100
+
+    #: Longest we will sleep for a server-supplied backoff hint, in seconds.
+    MAX_BACKOFF = 60.0
     
     def __init__(self, api_key: str, user_id: str, openai_api_key: Optional[str] = None, library_type: str = 'users'):
         """
@@ -30,6 +46,80 @@ class ZoteroClient:
         self.library_type = library_type
         self.headers = {'Zotero-API-Key': self.api_key}
 
+    def _request(self, method: str, url: str, retries: int = 2, **kwargs):
+        """
+        Perform an API request, honouring the API's rate-limit hints.
+
+        Zotero may attach ``Backoff: <seconds>`` to any response, successful ones
+        included, and asks clients to refrain from further requests for that long.
+        429 and 503 responses may carry ``Retry-After`` and are retried.
+
+        Args:
+            method: HTTP method name ('get', 'post', 'put', 'delete').
+            url: The URL to request.
+            retries: Extra attempts allowed for 429/503 responses.
+            **kwargs: Passed through to requests.
+
+        Returns:
+            The requests.Response.
+        """
+        kwargs.setdefault('timeout', self.TIMEOUT)
+        response = None
+        for attempt in range(retries + 1):
+            response = getattr(requests, method)(url, **kwargs)
+
+            backoff = response.headers.get('Backoff')
+            if backoff:
+                self._pause(backoff)
+
+            if response.status_code in (429, 503) and attempt < retries:
+                self._pause(response.headers.get('Retry-After') or (2 ** attempt))
+                continue
+            return response
+        return response
+
+    def _pause(self, seconds) -> None:
+        """Sleep for a server-supplied delay, capped so the CLI stays usable."""
+        try:
+            delay = float(seconds)
+        except (TypeError, ValueError):
+            return
+        time.sleep(max(0.0, min(delay, self.MAX_BACKOFF)))
+
+    def _get_pages(self, url: str, params: Optional[Dict[str, Any]] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Read a multi-object endpoint, following pagination.
+
+        The Web API defaults to 25 results per request and caps a page at 100,
+        so a single call only ever sees a slice of a library.
+
+        Args:
+            url: The endpoint to read.
+            params: Query parameters, excluding paging.
+            limit: Cap on the total number of objects returned; None means all.
+
+        Returns:
+            The raw JSON entries, in API order.
+        """
+        params = dict(params or {})
+        page_size = self.PAGE_SIZE if limit is None else max(1, min(limit, self.PAGE_SIZE))
+        results: List[Dict[str, Any]] = []
+        start = 0
+        while True:
+            response = self._request(
+                'get',
+                url,
+                headers=self.headers,
+                params=dict(params, limit=page_size, start=start),
+            )
+            response.raise_for_status()
+            batch = response.json()
+            results.extend(batch)
+            if len(batch) < page_size or (limit is not None and len(results) >= limit):
+                break
+            start += len(batch)
+        return results[:limit] if limit is not None else results
+
     def _parse_single_write_response(self, result: Dict[str, Any]) -> Dict[str, Any]:
         if result.get('failed'):
             raise RuntimeError(f"Zotero write failed: {result['failed'].get('0')}")
@@ -43,7 +133,8 @@ class ZoteroClient:
         Retrieve items from the Zotero library with advanced search capabilities.
         
         Args:
-            limit: Maximum number of items to retrieve.
+            limit: Maximum number of items to retrieve; None retrieves all
+                matching items, following pagination.
             q: Search query for quick search across titles and creator fields.
             qmode: Query mode for 'q' parameter (e.g., 'everything' for full-text search).
             item_type: Filter by item type (e.g., 'book', 'journalArticle').
@@ -55,8 +146,6 @@ class ZoteroClient:
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
         params = {}
-        if limit:
-            params['limit'] = limit
         if q:
             params['q'] = q
         if qmode:
@@ -68,9 +157,10 @@ class ZoteroClient:
         if include_trashed:
             params['includeTrashed'] = 1
             
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
-        return [Item.from_api_response(item_data) for item_data in response.json()]
+        return [
+            Item.from_api_response(item_data)
+            for item_data in self._get_pages(url, params, limit)
+        ]
     
     def get_item(self, item_id: str) -> Item:
         """
@@ -83,7 +173,7 @@ class ZoteroClient:
             Item object
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}'
-        response = requests.get(url, headers=self.headers)
+        response = self._request('get', url, headers=self.headers)
         response.raise_for_status()
         return Item.from_api_response(response.json())
     
@@ -98,14 +188,20 @@ class ZoteroClient:
             The created Item object.
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
-        response = requests.post(url, headers=self.headers, json=[item_data])
+        response = self._request('post', url, headers=self.headers, json=[item_data])
         response.raise_for_status()
-        result = response.json()
-        return Item.from_api_response(result['successful']['0'])
+        entry = self._parse_single_write_response(response.json())
+        if isinstance(entry, str):
+            # Some responses carry only the new key; read the object back.
+            return self.get_item(entry)
+        return Item.from_api_response(entry)
 
     def update_item(self, item_id: str, item_data: Dict[str, Any], if_unmodified_since_version: Optional[int] = None) -> Item:
         """
         Update an existing item in the Zotero library.
+
+        A successful update answers 204 No Content, in which case the item is
+        re-fetched to return its new state.
 
         Args:
             item_id: The ID of the item to update.
@@ -117,11 +213,13 @@ class ZoteroClient:
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}'
         headers = self.headers.copy()
-        if if_unmodified_since_version:
+        if if_unmodified_since_version is not None:
             headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
-        response = requests.put(url, headers=headers, json=item_data)
+        response = self._request('put', url, headers=headers, json=item_data)
         response.raise_for_status()
-        return Item.from_api_response(response.json()[0])
+        if not response.content:
+            return self.get_item(item_id)
+        return Item.from_api_response(response.json())
 
     def delete_item(self, item_id: str, if_unmodified_since_version: Optional[int] = None) -> None:
         """
@@ -133,9 +231,9 @@ class ZoteroClient:
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}'
         headers = self.headers.copy()
-        if if_unmodified_since_version:
+        if if_unmodified_since_version is not None:
             headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
-        response = requests.delete(url, headers=headers)
+        response = self._request('delete', url, headers=headers)
         response.raise_for_status()
         return None
     
@@ -154,16 +252,19 @@ class ZoteroClient:
         params = {'itemType': 'attachment'}
         if item_id:
             params['parentItem'] = item_id
-        if limit:
-            params['limit'] = limit
 
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
-        return [Item.from_api_response(item_data) for item_data in response.json()]
+        return [
+            Item.from_api_response(item_data)
+            for item_data in self._get_pages(url, params, limit)
+        ]
 
     def upload_attachment(self, parent_item_id: str, file_path: str, title: Optional[str] = None) -> Item:
         """
         Upload a file as an attachment to a Zotero item.
+
+        Implements the documented three-step file upload: create the attachment
+        item, authorize and perform the upload, then register the upload key.
+        See https://www.zotero.org/support/dev/web_api/v3/file_upload
 
         Args:
             parent_item_id: The ID of the parent item to attach the file to.
@@ -173,38 +274,71 @@ class ZoteroClient:
         Returns:
             The created Item object representing the attachment.
         """
-        # 1. Get an attachment item template
-        template = self.get_attachment_template(item_id=parent_item_id)
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"No such file: {file_path}")
 
-        # Prepare attachment metadata
         filename = os.path.basename(file_path)
-        if title is None:
-            title = filename
-
-        template['title'] = title
-        template['parentItem'] = parent_item_id
-        template['filename'] = filename
-        template['contentType'] = 'application/octet-stream' # Generic content type
-        template['linkMode'] = 'imported_file'
-
-        # 2. Create the attachment item
-        create_url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
-        create_response = requests.post(create_url, headers=self.headers, json=[template])
-        create_response.raise_for_status()
-        created_attachment_data = self._parse_single_write_response(create_response.json())
-        created_attachment_item = Item.from_api_response(created_attachment_data)
-
-        # 3. Upload the file content
-        file_upload_url = created_attachment_data['links']['file']['href']
+        file_size = os.path.getsize(file_path)
         with open(file_path, 'rb') as f:
             file_content = f.read()
 
-        upload_headers = self.headers.copy()
-        upload_headers['Content-Type'] = 'application/octet-stream'
-        upload_response = requests.put(file_upload_url, headers=upload_headers, data=file_content)
-        upload_response.raise_for_status()
+        md5 = hashlib.md5(file_content).hexdigest()
+        mtime = str(int(os.path.getmtime(file_path) * 1000))  # milliseconds
 
-        return created_attachment_item
+        # 1. Create the attachment item
+        template = self.get_attachment_template(item_id=parent_item_id, link_mode='imported_file')
+        template.update({
+            'title': title if title is not None else filename,
+            'parentItem': parent_item_id,
+            'filename': filename,
+            'linkMode': 'imported_file',
+            'contentType': mimetypes.guess_type(filename)[0] or 'application/octet-stream',
+        })
+        items_url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
+        create_response = self._request('post', 
+            items_url,
+            headers={**self.headers, 'Content-Type': 'application/json'},
+            json=[template],
+        )
+        create_response.raise_for_status()
+        entry = self._parse_single_write_response(create_response.json())
+        attachment_key = entry if isinstance(entry, str) else (
+            entry.get('key') or entry.get('data', {}).get('key')
+        )
+        if not attachment_key:
+            raise RuntimeError(f"Unexpected write response: {entry}")
+
+        file_url = f'{items_url}/{attachment_key}/file'
+        auth_headers = {
+            **self.headers,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'If-None-Match': '*',
+        }
+
+        # 2. Ask the API to authorize the upload
+        auth_response = self._request('post', 
+            file_url,
+            headers=auth_headers,
+            data={'md5': md5, 'filename': filename, 'filesize': file_size, 'mtime': mtime},
+        )
+        auth_response.raise_for_status()
+        auth = auth_response.json()
+
+        if not auth.get('exists'):
+            # 3. POST prefix + file + suffix to the storage url
+            body = auth['prefix'].encode('utf-8') + file_content + auth['suffix'].encode('utf-8')
+            upload_response = self._request('post', 
+                auth['url'],
+                headers={'Content-Type': auth['contentType']},
+                data=body,
+            )
+            upload_response.raise_for_status()
+
+            # 4. Register the upload
+            register_response = self._request('post', file_url, headers=auth_headers, data={'upload': auth['uploadKey']})
+            register_response.raise_for_status()
+
+        return self.get_item(attachment_key)
 
     def download_attachment(self, attachment_id: str, output_path: str) -> str:
         """
@@ -222,11 +356,12 @@ class ZoteroClient:
         if attachment_item.item_type != 'attachment':
             raise ValueError(f"Item {attachment_id} is not an attachment.")
 
-        if 'file' not in attachment_item.links:
-            raise ValueError(f"Attachment {attachment_id} does not have a downloadable file.")
-
-        download_url = attachment_item.links['file']['href']
-        response = requests.get(download_url, headers=self.headers, stream=True)
+        # Documented file endpoint; the item's links carry no 'file' entry.
+        download_url = (
+            f'{self.BASE_URL}/{self.library_type}/{self.user_id}'
+            f'/items/{attachment_id}/file'
+        )
+        response = self._request('get', download_url, headers=self.headers, stream=True)
         response.raise_for_status()
 
         with open(output_path, 'wb') as f:
@@ -237,7 +372,11 @@ class ZoteroClient:
 
     def get_citations(self, item_ids: List[str], style: str, format: str = 'html', locale: Optional[str] = None) -> str:
         """
-        Generate formatted citations or a bibliography for a list of item IDs.
+        Generate formatted citations for a list of item IDs.
+
+        The API returns citations as XHTML through `format=json&include=citation`
+        (there is no `citation` query parameter). `format='text'` strips the
+        markup from each citation locally.
 
         Args:
             item_ids: A list of Zotero item keys for which to generate citations.
@@ -246,21 +385,27 @@ class ZoteroClient:
             locale: Optional. The bibliography locale (e.g., 'en-US').
 
         Returns:
-            A string containing the formatted citations or bibliography.
+            A string containing the formatted citations, one per line.
         """
+        if format not in ('html', 'text'):
+            raise ValueError(f"Unsupported citation format: {format!r} (use 'html' or 'text')")
+
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
         params = {
             'itemKey': ','.join(item_ids),
+            'include': 'citation',
             'style': style,
-            'format': format,
-            'citation': '1' # Request individual citations
         }
         if locale:
             params['locale'] = locale
 
-        response = requests.get(url, headers=self.headers, params=params)
+        response = self._request('get', url, headers=self.headers, params=params)
         response.raise_for_status()
-        return response.text
+
+        citations = [entry.get('citation', '') for entry in response.json()]
+        if format == 'text':
+            citations = [BeautifulSoup(c, 'html.parser').get_text() for c in citations]
+        return '\n'.join(citations)
 
     def summarize_item_content(self, item_id: str, prompt: str = "Summarize the following text:") -> str:
         """
@@ -340,40 +485,42 @@ class ZoteroClient:
                     item_map[duplicate_key] = item
         return duplicates
 
-    def export_items(self, format: str = 'bibtex') -> str:
+    def export_items(self, format: str = 'bibtex', limit: Optional[int] = None) -> str:
         """
         Export items from the Zotero library to a specified format.
 
         Args:
             format: The export format ('bibtex' or 'csv'). Defaults to 'bibtex'.
+            limit: Passed to the API, which requires a limit for export formats.
+                Export formats are processed as a whole feed, not a page.
 
         Returns:
             A string containing the exported data.
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
-        params = {'format': format}
+        params = {'format': format, 'limit': limit if limit is not None else self.PAGE_SIZE}
         
-        response = requests.get(url, headers=self.headers, params=params)
+        response = self._request('get', url, headers=self.headers, params=params)
         response.raise_for_status()
         return response.text
 
-    def get_attachment_template(self, item_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_attachment_template(self, item_id: Optional[str] = None, link_mode: str = 'imported_file') -> Dict[str, Any]:
         """
         Retrieve an attachment item template from the Zotero API.
 
         Args:
             item_id: Optional. The ID of the parent item for which to get the attachment template.
+            link_mode: The link mode to request a template for.
 
         Returns:
             A dictionary representing the attachment item template.
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/new'
-        params = {'itemType': 'attachment'}
+        params = {'itemType': 'attachment', 'linkMode': link_mode}
         if item_id:
-            params['linkMode'] = 'imported_url' # Or 'imported_file' depending on the use case
             params['parentItem'] = item_id
 
-        response = requests.get(url, headers=self.headers, params=params)
+        response = self._request('get', url, headers=self.headers, params=params)
         response.raise_for_status()
         return response.json()
 
@@ -382,18 +529,17 @@ class ZoteroClient:
         Retrieve collections from the Zotero library.
 
         Args:
-            limit: Maximum number of collections to retrieve.
+            limit: Maximum number of collections to retrieve; None retrieves all.
 
         Returns:
             List of Collection objects
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections'
         params = {}
-        if limit:
-            params['limit'] = limit
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
-        return [Collection.from_api_response(collection_data) for collection_data in response.json()]
+        return [
+            Collection.from_api_response(collection_data)
+            for collection_data in self._get_pages(url, params, limit)
+        ]
 
     def create_collection(self, collection_data: Dict[str, Any]) -> Collection:
         """
@@ -406,9 +552,24 @@ class ZoteroClient:
             The created Collection object.
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections'
-        response = requests.post(url, headers=self.headers, json=[collection_data])
+        response = self._request('post', url, headers=self.headers, json=[collection_data])
         response.raise_for_status()
         return Collection.from_api_response(self._parse_single_write_response(response.json()))
+
+    def get_collection(self, collection_id: str) -> Collection:
+        """
+        Retrieve a specific collection by ID.
+
+        Args:
+            collection_id: The collection key.
+
+        Returns:
+            Collection object
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections/{collection_id}'
+        response = self._request('get', url, headers=self.headers)
+        response.raise_for_status()
+        return Collection.from_api_response(response.json())
 
     def update_collection(self, collection_id: str, collection_data: Dict[str, Any], if_unmodified_since_version: Optional[int] = None) -> Collection:
         """
@@ -424,11 +585,14 @@ class ZoteroClient:
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections/{collection_id}'
         headers = self.headers.copy()
-        if if_unmodified_since_version:
+        if if_unmodified_since_version is not None:
             headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
-        response = requests.put(url, headers=headers, json=collection_data)
+        response = self._request('put', url, headers=headers, json=collection_data)
         response.raise_for_status()
-        return Collection.from_api_response(response.json()[0])
+        if not response.content:
+            # A successful PUT answers 204 No Content.
+            return self.get_collection(collection_id)
+        return Collection.from_api_response(response.json())
 
     def delete_collection(self, collection_id: str, if_unmodified_since_version: Optional[int] = None) -> None:
         """
@@ -440,18 +604,19 @@ class ZoteroClient:
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections/{collection_id}'
         headers = self.headers.copy()
-        if if_unmodified_since_version:
+        if if_unmodified_since_version is not None:
             headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
-        response = requests.delete(url, headers=headers)
+        response = self._request('delete', url, headers=headers)
         response.raise_for_status()
         return None
 
-    def get_tags(self, item_id: Optional[str] = None) -> List[Tag]:
+    def get_tags(self, item_id: Optional[str] = None, limit: Optional[int] = None) -> List[Tag]:
         """
         Retrieve tags from the Zotero library. Can be filtered by item.
 
         Args:
             item_id: Optional. The ID of the item to retrieve tags for.
+            limit: Maximum number of tags to retrieve; None retrieves all.
 
         Returns:
             List of Tag objects.
@@ -460,9 +625,10 @@ class ZoteroClient:
             url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}/tags'
         else:
             url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/tags'
-        response = requests.get(url, headers=self.headers)
-        response.raise_for_status()
-        return [Tag.from_api_response(tag_data) for tag_data in response.json()]
+        return [
+            Tag.from_api_response(tag_data)
+            for tag_data in self._get_pages(url, {}, limit)
+        ]
 
     def add_tags_to_item(self, item_id: str, tags: List[str], if_unmodified_since_version: Optional[int] = None) -> None:
         """
@@ -475,10 +641,10 @@ class ZoteroClient:
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}/tags'
         headers = self.headers.copy()
-        if if_unmodified_since_version:
+        if if_unmodified_since_version is not None:
             headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
         tag_data = [{'tag': tag_name} for tag_name in tags]
-        response = requests.post(url, headers=headers, json=tag_data)
+        response = self._request('post', url, headers=headers, json=tag_data)
         response.raise_for_status()
         return None
 
@@ -486,16 +652,33 @@ class ZoteroClient:
         """
         Remove tags from a specific item.
 
+        Every removal writes to the item and advances its version, so a supplied
+        precondition cannot be reused as-is for the second tag. The version is
+        tracked from each response (falling back to a re-read) as we go.
+
         Args:
             item_id: The ID of the item to remove tags from.
             tags: A list of tag names to remove.
             if_unmodified_since_version: Optional. The version of the item to ensure no conflicts.
         """
+        version = if_unmodified_since_version
         for tag_name in tags:
-            url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}/tags/{tag_name}'
+            url = (
+                f'{self.BASE_URL}/{self.library_type}/{self.user_id}'
+                f'/items/{item_id}/tags/{quote(tag_name, safe="")}'
+            )
             headers = self.headers.copy()
-            if if_unmodified_since_version:
-                headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
-            response = requests.delete(url, headers=headers)
+            if version is not None:
+                headers['If-Unmodified-Since-Version'] = str(version)
+            response = self._request('delete', url, headers=headers)
             response.raise_for_status()
+            if if_unmodified_since_version is not None:
+                version = self._next_version(response, item_id)
         return None
+
+    def _next_version(self, response, item_id: str) -> int:
+        """Return the item version after a write, from the response or a re-read."""
+        reported = response.headers.get('Last-Modified-Version')
+        if reported is not None and str(reported).isdigit():
+            return int(reported)
+        return self.get_item(item_id).version

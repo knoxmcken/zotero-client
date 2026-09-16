@@ -5,6 +5,9 @@ from zotero_client.web import get_client
 
 items_bp = Blueprint('items', __name__)
 
+#: The list view pages rather than streaming an entire library.
+DEFAULT_PAGE_SIZE = 100
+
 
 @items_bp.before_request
 def check_credentials():
@@ -26,7 +29,7 @@ def list_items():
     q = request.args.get('q', '').strip() or None
     item_type = request.args.get('type', '').strip() or None
     tag = request.args.get('tag', '').strip() or None
-    limit = request.args.get('limit', type=int) or None
+    limit = request.args.get('limit', type=int) or DEFAULT_PAGE_SIZE
 
     client = get_client(current_app)
     try:
