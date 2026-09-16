@@ -16,6 +16,12 @@ import pytest
 
 from zotero_client.web import create_app
 
+#: create_app() refuses to start without a signing key outside debug mode, so
+#: this file supplies one rather than relying on a default. Kept local (rather
+#: than imported from conftest) because the packaged-wheel CI job runs this file
+#: from a clean environment where only the built wheel is importable.
+TEST_SECRET_KEY = 'packaged-templates-test-key'
+
 # Every template the app can render. Keep in sync with
 # zotero_client/web/templates/.
 TEMPLATES = (
@@ -26,6 +32,13 @@ TEMPLATES = (
     'collections/list.html',
     'tags/list.html',
 )
+
+
+@pytest.fixture
+def secret_key(monkeypatch):
+    """Give create_app() a signing key (see #7)."""
+    monkeypatch.setenv('FLASK_SECRET_KEY', TEST_SECRET_KEY)
+    return TEST_SECRET_KEY
 
 
 def _templates_root():
@@ -43,7 +56,7 @@ def test_template_is_packaged(template):
 
 
 @pytest.mark.parametrize('template', TEMPLATES)
-def test_app_can_load_template(template):
+def test_app_can_load_template(secret_key, template):
     """Jinja resolves the template through the app, not just on disk."""
     app = create_app()
     assert app.jinja_env.get_template(template).name == template
