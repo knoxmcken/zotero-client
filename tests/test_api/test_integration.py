@@ -6,6 +6,7 @@ These tests require valid API credentials set as environment variables:
 """
 
 import os
+import subprocess
 import time
 
 import pytest
@@ -59,6 +60,31 @@ def _delete_with_retry(client, key, version):
         f"delete of {key} kept returning 404 after "
         f"{_WRITE_PROPAGATION_ATTEMPTS} attempts: {last_error}"
     )
+
+
+def _run_cli(*args):
+    """Run the installed `zot` CLI against the live library."""
+    return subprocess.run(
+        ['zot', *args],
+        capture_output=True,
+        text=True,
+        env={**os.environ, 'ZOTERO_LIBRARY_TYPE': 'users'},
+    )
+
+
+def _assert_cli_succeeded(result):
+    """Assert the command actually worked.
+
+    A failing command exits 1, so the old `returncode in [0, 1]` held either
+    way and could never fail -- that is how a broken command stayed green.
+    """
+    assert result.returncode == 0, (
+        f"`zot` exited {result.returncode}\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
+    assert 'Traceback' not in result.stderr, result.stderr
+    assert result.stdout.strip(), 'command succeeded but printed nothing'
 
 
 @pytest.fixture
@@ -162,16 +188,11 @@ class TestIntegrationCLI:
         user_id = os.getenv('ZOTERO_USER_ID')
         if not api_key or not user_id:
             pytest.skip("Zotero API credentials not set")
-        
-        import subprocess
-        result = subprocess.run(
-            ['zot', 'items', 'list', '--limit', '3'],
-            capture_output=True,
-            text=True,
-            env={**os.environ, 'ZOTERO_LIBRARY_TYPE': 'users'}
-        )
-        # Should succeed (exit code 0) or give a reasonable error
-        assert result.returncode in [0, 1]
+
+        result = _run_cli('items', 'list', '--limit', '3')
+        _assert_cli_succeeded(result)
+        # The command is read-only; on success it prints the item table.
+        assert 'Zotero Items' in result.stdout, result.stdout
     
     def test_cli_collections_list(self):
         """Test CLI collections list command."""
@@ -179,15 +200,10 @@ class TestIntegrationCLI:
         user_id = os.getenv('ZOTERO_USER_ID')
         if not api_key or not user_id:
             pytest.skip("Zotero API credentials not set")
-        
-        import subprocess
-        result = subprocess.run(
-            ['zot', 'collections', 'list'],
-            capture_output=True,
-            text=True,
-            env={**os.environ, 'ZOTERO_LIBRARY_TYPE': 'users'}
-        )
-        assert result.returncode in [0, 1]
+
+        result = _run_cli('collections', 'list')
+        _assert_cli_succeeded(result)
+        assert 'Zotero Collections' in result.stdout, result.stdout
     
     def test_cli_tags_list(self):
         """Test CLI tags list command."""
@@ -195,12 +211,7 @@ class TestIntegrationCLI:
         user_id = os.getenv('ZOTERO_USER_ID')
         if not api_key or not user_id:
             pytest.skip("Zotero API credentials not set")
-        
-        import subprocess
-        result = subprocess.run(
-            ['zot', 'tags', 'list'],
-            capture_output=True,
-            text=True,
-            env={**os.environ, 'ZOTERO_LIBRARY_TYPE': 'users'}
-        )
-        assert result.returncode in [0, 1]
+
+        result = _run_cli('tags', 'list')
+        _assert_cli_succeeded(result)
+        assert 'Zotero Tags' in result.stdout, result.stdout
