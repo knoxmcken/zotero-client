@@ -124,3 +124,36 @@ def test_delete_collection(mock_delete, mock_client):
         headers=expected_headers,
         timeout=mock_client.TIMEOUT,
     )
+
+@patch('requests.delete')
+@patch('requests.get')
+def test_delete_collection_without_a_version_reads_the_precondition(mock_get, mock_delete, mock_client):
+    """Omitting the version must still work: the API requires a precondition."""
+    collection_id = "DELETECOLLECTION789"
+
+    get_response = Mock()
+    get_response.json.return_value = {
+        "key": collection_id,
+        "version": 4,
+        "data": {"key": collection_id, "name": "x", "parentCollection": False},
+    }
+    get_response.raise_for_status.return_value = None
+    mock_get.return_value = get_response
+
+    delete_response = Mock()
+    delete_response.status_code = 204
+    delete_response.raise_for_status.return_value = None
+    mock_delete.return_value = delete_response
+
+    mock_client.delete_collection(collection_id)
+
+    mock_get.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections/{collection_id}',
+        headers=mock_client.headers,
+        timeout=mock_client.TIMEOUT,
+    )
+    mock_delete.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections/{collection_id}',
+        headers={**mock_client.headers, 'If-Unmodified-Since-Version': '4'},
+        timeout=mock_client.TIMEOUT,
+    )
