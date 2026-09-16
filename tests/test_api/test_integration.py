@@ -14,10 +14,13 @@ import requests
 
 from zotero_client.api.client import ZoteroClient
 
-# Zotero can return a transient 404 for an object immediately after a write
-# while the new version propagates. Tolerate that window rather than failing
-# the run on the first attempt.
-_WRITE_PROPAGATION_ATTEMPTS = 5
+# Read-back against a live API can briefly 404 while a new version settles, so
+# tolerate one short window rather than failing on the first attempt. Two is
+# deliberate: the #11 investigation found readable types settle on attempt 1 in
+# every round, while notes never settle at all -- five attempts only delayed a
+# genuine failure. The printed attempt count stays, because that number is what
+# exposed the note behaviour. See docs/NOTE_PERSISTENCE_INVESTIGATION.md.
+_WRITE_PROPAGATION_ATTEMPTS = 2
 _WRITE_PROPAGATION_DELAY = 1.0
 
 
@@ -27,7 +30,11 @@ def _status_of(exc):
 
 
 def _wait_until_readable(client, key):
-    """Poll until a freshly created item can be read back; return attempt count."""
+    """Poll briefly until a freshly created item can be read back; return attempt count.
+
+    One retry only -- see the constants above and
+    docs/NOTE_PERSISTENCE_INVESTIGATION.md for why more never helped.
+    """
     last_error = None
     for attempt in range(1, _WRITE_PROPAGATION_ATTEMPTS + 1):
         try:
@@ -134,12 +141,12 @@ class TestIntegrationCRUD:
     def test_create_and_delete_item(self, real_client):
         """Test creating and then deleting an item.
 
-        Uses a book rather than a standalone note. Notes created through
-        this API key never persist: POST returns 200 and the library
-        version advances, but the item is never readable (with or without
-        includeTrashed) and never appears in a listing. That is a
-        Zotero-side behaviour, not a client bug -- see
-        scripts/diagnose_zotero_write.py.
+        Uses a book rather than a standalone note. Notes written through this
+        API key are stored but never readable: POST returns 200, the library
+        version advances, and the object survives a parent-delete cascade --
+        yet every read path (GET by key, children listings, includeTrashed)
+        refuses it, as does DELETE. A Zotero-side limitation the client cannot
+        work around; see docs/NOTE_PERSISTENCE_INVESTIGATION.md.
         """
         # Create a test item
         test_item = {
