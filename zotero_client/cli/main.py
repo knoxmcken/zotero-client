@@ -401,7 +401,7 @@ def remove_tags_from_item_cli(args):
 def start_web_server(args):
     """Start the Flask web UI server."""
     from zotero_client.web import create_app
-    app = create_app()
+    app = create_app(debug=args.debug)
     console.print(f"[bold green]Starting Web UI at http://{args.host}:{args.port}[/]")
     app.run(host=args.host, port=args.port, debug=args.debug)
 
