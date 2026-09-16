@@ -5,7 +5,6 @@ import mimetypes
 import os
 import time
 from typing import List, Dict, Optional, Any
-from urllib.parse import quote
 
 import openai
 import requests
@@ -212,9 +211,11 @@ class ZoteroClient:
             The updated Item object.
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}'
-        headers = self.headers.copy()
-        if if_unmodified_since_version is not None:
-            headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
+        version = if_unmodified_since_version
+        if version is None:
+            version = item_data.get('version')
+        version = self._version_for_write(version, lambda: self.get_item(item_id).version)
+        headers = dict(self.headers, **{'If-Unmodified-Since-Version': str(version)})
         response = self._request('put', url, headers=headers, json=item_data)
         response.raise_for_status()
         if not response.content:
@@ -230,9 +231,10 @@ class ZoteroClient:
             if_unmodified_since_version: Optional. The version of the item to ensure no conflicts.
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}'
-        headers = self.headers.copy()
-        if if_unmodified_since_version is not None:
-            headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
+        version = self._version_for_write(
+            if_unmodified_since_version, lambda: self.get_item(item_id).version
+        )
+        headers = dict(self.headers, **{'If-Unmodified-Since-Version': str(version)})
         response = self._request('delete', url, headers=headers)
         response.raise_for_status()
         return None
@@ -596,9 +598,11 @@ class ZoteroClient:
             The updated Collection object.
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections/{collection_id}'
-        headers = self.headers.copy()
-        if if_unmodified_since_version is not None:
-            headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
+        version = if_unmodified_since_version
+        if version is None:
+            version = collection_data.get('version')
+        version = self._version_for_write(version, lambda: self.get_collection(collection_id).version)
+        headers = dict(self.headers, **{'If-Unmodified-Since-Version': str(version)})
         response = self._request('put', url, headers=headers, json=collection_data)
         response.raise_for_status()
         if not response.content:
@@ -615,9 +619,10 @@ class ZoteroClient:
             if_unmodified_since_version: Optional. The version of the collection to ensure no conflicts.
         """
         url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections/{collection_id}'
-        headers = self.headers.copy()
-        if if_unmodified_since_version is not None:
-            headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
+        version = self._version_for_write(
+            if_unmodified_since_version, lambda: self.get_collection(collection_id).version
+        )
+        headers = dict(self.headers, **{'If-Unmodified-Since-Version': str(version)})
         response = self._request('delete', url, headers=headers)
         response.raise_for_status()
         return None
@@ -646,51 +651,80 @@ class ZoteroClient:
         """
         Add tags to a specific item.
 
+        Tags are an item field, not a sub-resource: the API answers 405 Method
+        Not Allowed to POST and PUT on `/items/<key>/tags`, so this reads the
+        item's current tags, merges in the new ones and PATCHes the result.
+        Array properties are complete lists, so sending only the added tags
+        would silently drop every existing one.
+
         Args:
             item_id: The ID of the item to add tags to.
             tags: A list of tag names to add.
             if_unmodified_since_version: Optional. The version of the item to ensure no conflicts.
         """
-        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}/tags'
-        headers = self.headers.copy()
-        if if_unmodified_since_version is not None:
-            headers['If-Unmodified-Since-Version'] = str(if_unmodified_since_version)
-        tag_data = [{'tag': tag_name} for tag_name in tags]
-        response = self._request('post', url, headers=headers, json=tag_data)
-        response.raise_for_status()
-        return None
+        existing, version = self._read_item_tags(item_id)
+        known = {tag.get('tag') for tag in existing}
+        merged = list(existing) + [{'tag': name} for name in tags if name not in known]
+        self._patch_item(
+            item_id,
+            {'tags': merged},
+            if_unmodified_since_version if if_unmodified_since_version is not None else version,
+        )
 
     def remove_tags_from_item(self, item_id: str, tags: List[str], if_unmodified_since_version: Optional[int] = None) -> None:
         """
         Remove tags from a specific item.
 
-        Every removal writes to the item and advances its version, so a supplied
-        precondition cannot be reused as-is for the second tag. The version is
-        tracked from each response (falling back to a re-read) as we go.
+        As with `add_tags_to_item`, this PATCHes the item's tag list rather than
+        looping over the `/items/<key>/tags/<tag>` DELETE that the API rejects
+        with 405 (and that could not reuse one version across several tags
+        anyway).
 
         Args:
             item_id: The ID of the item to remove tags from.
             tags: A list of tag names to remove.
             if_unmodified_since_version: Optional. The version of the item to ensure no conflicts.
         """
-        version = if_unmodified_since_version
-        for tag_name in tags:
-            url = (
-                f'{self.BASE_URL}/{self.library_type}/{self.user_id}'
-                f'/items/{item_id}/tags/{quote(tag_name, safe="")}'
-            )
-            headers = self.headers.copy()
-            if version is not None:
-                headers['If-Unmodified-Since-Version'] = str(version)
-            response = self._request('delete', url, headers=headers)
-            response.raise_for_status()
-            if if_unmodified_since_version is not None:
-                version = self._next_version(response, item_id)
+        existing, version = self._read_item_tags(item_id)
+        dropping = set(tags)
+        remaining = [tag for tag in existing if tag.get('tag') not in dropping]
+        self._patch_item(
+            item_id,
+            {'tags': remaining},
+            if_unmodified_since_version if if_unmodified_since_version is not None else version,
+        )
+
+    def _read_item_tags(self, item_id: str) -> tuple:
+        """Read an item's current tag list and version, in one request."""
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}'
+        response = self._request('get', url, headers=self.headers)
+        response.raise_for_status()
+        data = response.json()
+        return data.get('data', {}).get('tags', []), data.get('version')
+
+    def _patch_item(self, item_id: str, payload: Dict[str, Any], version: Optional[int] = None) -> None:
+        """Apply a partial update, supplying the precondition the API requires."""
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/{item_id}'
+        if version is None:
+            version = self.get_item(item_id).version
+        headers = dict(self.headers, **{
+            'Content-Type': 'application/json',
+            'If-Unmodified-Since-Version': str(version),
+        })
+        response = self._request('patch', url, headers=headers, json=payload)
+        response.raise_for_status()
         return None
 
-    def _next_version(self, response, item_id: str) -> int:
-        """Return the item version after a write, from the response or a re-read."""
-        reported = response.headers.get('Last-Modified-Version')
-        if reported is not None and str(reported).isdigit():
-            return int(reported)
-        return self.get_item(item_id).version
+    def _version_for_write(self, current: Optional[int], fetch_current) -> int:
+        """
+        Return the version to send as a write precondition.
+
+        Zotero requires one: a write with no `If-Unmodified-Since-Version`
+        header (and no `version` property in the body) is rejected with 428
+        Precondition Required. When the caller supplies no version, read the
+        object's current one, which makes the argument genuinely optional -- at
+        the cost of one extra GET and no conflict protection.
+        """
+        if current is not None:
+            return current
+        return fetch_current()

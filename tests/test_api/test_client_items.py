@@ -108,6 +108,48 @@ def test_delete_item(mock_delete, mock_client):
         timeout=mock_client.TIMEOUT,
     )
 
+@patch('requests.delete')
+@patch('requests.get')
+def test_delete_item_without_a_version_reads_the_precondition(mock_get, mock_delete, mock_client):
+    """Omitting the version must still work: the API requires a precondition.
+
+    A write with no `If-Unmodified-Since-Version` is rejected with 428
+    Precondition Required, and this is exactly the call the web delete route
+    makes -- `delete_item(item_id)` with no version -- which is why that button
+    could never work.
+    """
+    item_id = "DELETEITEM789"
+
+    get_response = Mock()
+    get_response.json.return_value = {
+        "key": item_id,
+        "version": 9,
+        "data": {
+            "key": item_id, "itemType": "book", "title": "x",
+            "creators": [], "date": "", "url": "",
+        },
+    }
+    get_response.raise_for_status.return_value = None
+    mock_get.return_value = get_response
+
+    delete_response = Mock()
+    delete_response.status_code = 204
+    delete_response.raise_for_status.return_value = None
+    mock_delete.return_value = delete_response
+
+    mock_client.delete_item(item_id)
+
+    mock_get.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{item_id}',
+        headers=mock_client.headers,
+        timeout=mock_client.TIMEOUT,
+    )
+    mock_delete.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/{item_id}',
+        headers={**mock_client.headers, 'If-Unmodified-Since-Version': '9'},
+        timeout=mock_client.TIMEOUT,
+    )
+
 @patch('requests.get')
 def test_get_items_advanced_search(mock_get, mock_client):
     mock_response = Mock()

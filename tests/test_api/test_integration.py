@@ -277,3 +277,66 @@ class TestIntegrationAttachmentUpload:
                     real_client.delete_item(key, real_client.get_item(key).version)
                 except Exception as exc:
                     print(f"CLEANUP FAILED for {key}: {exc}")
+
+
+@pytest.mark.integration
+class TestIntegrationWritePreconditions:
+    """Writes require a precondition, and tags are an item field.
+
+    Both behaviours were wrong in the client and invisible to the mocked suite:
+    a write with no `If-Unmodified-Since-Version` is rejected with 428
+    Precondition Required, and the API answers 405 to POST/PUT/DELETE on
+    `/items/<key>/tags`. The web delete route calls `delete_item(item_id)` with
+    no version, so that button could never work.
+    """
+
+    def test_delete_without_a_version(self, real_client):
+        """Omitting the version must still delete, not 428."""
+        created = real_client.create_item({
+            "itemType": "book",
+            "title": "precondition test - please delete",
+        })
+        key = created.key
+        try:
+            _wait_until_readable(real_client, key)
+
+            # No version supplied -- exactly what the web route does.
+            real_client.delete_item(key)
+
+            with pytest.raises(requests.exceptions.HTTPError) as caught:
+                real_client.get_item(key)
+            assert _status_of(caught.value) == 404
+        finally:
+            try:
+                real_client.delete_item(key, real_client.get_item(key).version)
+            except Exception:
+                pass  # already gone, which is the point of the test
+
+    def test_add_and_remove_tags(self, real_client):
+        """Tags round-trip through a PATCH of the item's tag list."""
+        created = real_client.create_item({
+            "itemType": "book",
+            "title": "tag round-trip test - please delete",
+        })
+        key = created.key
+        try:
+            _wait_until_readable(real_client, key)
+
+            real_client.add_tags_to_item(key, ["alpha", "beta"])
+            assert {t.tag for t in real_client.get_tags(item_id=key)} == {"alpha", "beta"}
+
+            # Re-adding an existing tag must not duplicate it.
+            real_client.add_tags_to_item(key, ["alpha", "gamma"])
+            assert {t.tag for t in real_client.get_tags(item_id=key)} == {"alpha", "beta", "gamma"}
+
+            real_client.remove_tags_from_item(key, ["alpha"])
+            assert {t.tag for t in real_client.get_tags(item_id=key)} == {"beta", "gamma"}
+
+            # Removing everything leaves no tags, rather than erroring.
+            real_client.remove_tags_from_item(key, ["beta", "gamma"])
+            assert real_client.get_tags(item_id=key) == []
+        finally:
+            try:
+                real_client.delete_item(key, real_client.get_item(key).version)
+            except Exception as exc:
+                print(f"CLEANUP FAILED for {key}: {exc}")
