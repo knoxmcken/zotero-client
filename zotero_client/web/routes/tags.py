@@ -6,16 +6,6 @@ from zotero_client.web import get_client
 tags_bp = Blueprint('tags', __name__)
 
 
-@tags_bp.before_request
-def check_credentials():
-    if current_app.config.get('CREDENTIALS_MISSING'):
-        return render_template(
-            'error.html',
-            code=503,
-            message='Zotero credentials are not configured. Set ZOTERO_API_KEY and ZOTERO_USER_ID in your .env file.',
-        ), 503
-
-
 @tags_bp.route('/tags')
 def list_tags():
     client = get_client(current_app)

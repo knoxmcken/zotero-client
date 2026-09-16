@@ -9,16 +9,6 @@ items_bp = Blueprint('items', __name__)
 DEFAULT_PAGE_SIZE = 100
 
 
-@items_bp.before_request
-def check_credentials():
-    if current_app.config.get('CREDENTIALS_MISSING'):
-        return render_template(
-            'error.html',
-            code=503,
-            message='Zotero credentials are not configured. Set ZOTERO_API_KEY and ZOTERO_USER_ID in your .env file.',
-        ), 503
-
-
 @items_bp.route('/')
 def index():
     return redirect(url_for('items.list_items'))

@@ -74,10 +74,14 @@ def create_app(debug=False):
     from zotero_client.web.routes.items import items_bp
     from zotero_client.web.routes.collections import collections_bp
     from zotero_client.web.routes.tags import tags_bp
+    from zotero_client.web.security import register_shared_guards
 
     app.register_blueprint(items_bp)
     app.register_blueprint(collections_bp)
     app.register_blueprint(tags_bp)
+
+    # One guard for every endpoint, so a new blueprint cannot skip it.
+    register_shared_guards(app)
 
     @app.errorhandler(404)
     def not_found(e):
