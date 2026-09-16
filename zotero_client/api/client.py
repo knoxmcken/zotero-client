@@ -241,17 +241,26 @@ class ZoteroClient:
         """
         Retrieve attachment items from the Zotero library.
 
+        With `item_id`, this reads that item's children and keeps the
+        attachments. There is no `parentItem` filter on `/items`: passing one is
+        silently ignored and returns attachments from the whole library, so the
+        child endpoint is the only way to scope this.
+
         Args:
             item_id: Optional. The ID of the parent item to retrieve attachments for.
-            limit: Maximum number of attachments to retrieve.
+            limit: Maximum number of attachments to retrieve; None retrieves all.
 
         Returns:
             List of Item objects (representing attachments).
         """
-        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
         params = {'itemType': 'attachment'}
         if item_id:
-            params['parentItem'] = item_id
+            url = (
+                f'{self.BASE_URL}/{self.library_type}/{self.user_id}'
+                f'/items/{item_id}/children'
+            )
+        else:
+            url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items'
 
         return [
             Item.from_api_response(item_data)
@@ -285,8 +294,9 @@ class ZoteroClient:
         md5 = hashlib.md5(file_content).hexdigest()
         mtime = str(int(os.path.getmtime(file_path) * 1000))  # milliseconds
 
-        # 1. Create the attachment item
-        template = self.get_attachment_template(item_id=parent_item_id, link_mode='imported_file')
+        # 1. Create the attachment item. The template endpoint is global, and the
+        # parent link is set on the payload rather than requested from the API.
+        template = self.get_attachment_template(link_mode='imported_file')
         template.update({
             'title': title if title is not None else filename,
             'parentItem': parent_item_id,
@@ -504,21 +514,23 @@ class ZoteroClient:
         response.raise_for_status()
         return response.text
 
-    def get_attachment_template(self, item_id: Optional[str] = None, link_mode: str = 'imported_file') -> Dict[str, Any]:
+    def get_attachment_template(self, link_mode: str = 'imported_file') -> Dict[str, Any]:
         """
         Retrieve an attachment item template from the Zotero API.
 
+        The template endpoint is global, not library-scoped: it lives at
+        `/items/new`, alongside the other schema endpoints. The library-scoped
+        form (`/users/<id>/items/new`) returns 404.
+
         Args:
-            item_id: Optional. The ID of the parent item for which to get the attachment template.
-            link_mode: The link mode to request a template for.
+            link_mode: The link mode to request a template for. The API requires
+                this for attachment templates (400 without it).
 
         Returns:
             A dictionary representing the attachment item template.
         """
-        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/items/new'
+        url = f'{self.BASE_URL}/items/new'
         params = {'itemType': 'attachment', 'linkMode': link_mode}
-        if item_id:
-            params['parentItem'] = item_id
 
         response = self._request('get', url, headers=self.headers, params=params)
         response.raise_for_status()

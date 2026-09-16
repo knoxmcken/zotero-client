@@ -215,3 +215,65 @@ class TestIntegrationCLI:
         result = _run_cli('tags', 'list')
         _assert_cli_succeeded(result)
         assert 'Zotero Tags' in result.stdout, result.stdout
+
+
+@pytest.mark.integration
+class TestIntegrationAttachmentUpload:
+    """The attachment upload/download path, end to end.
+
+    This path had no live coverage at all, which is how it shipped first with an
+    invented upload protocol (#6) and then with a template URL that 404s (#17).
+    Neither was observable: the unit test mocks the template fetch, so it asserts
+    against a response the API never produces, and the rest of this suite only
+    ever read.
+    """
+
+    def test_upload_and_download_round_trip(self, real_client, tmp_path):
+        parent_key = None
+        attachment_key = None
+        try:
+            parent = real_client.create_item({
+                "itemType": "book",
+                "title": "Upload integration test - please delete",
+            })
+            parent_key = parent.key
+            _wait_until_readable(real_client, parent_key)
+
+            body = b"zotero-client attachment round trip\n"
+            source = tmp_path / "upload-me.txt"
+            source.write_bytes(body)
+
+            attachment = real_client.upload_attachment(
+                parent_key, str(source), title="Upload round-trip attachment"
+            )
+            attachment_key = attachment.key
+
+            assert attachment.item_type == "attachment"
+            assert attachment.parent_item == parent_key
+            assert attachment.title == "Upload round-trip attachment"
+
+            # The upload must appear as a child of its parent -- the same thing
+            # get_attachments() answers, via the child endpoint.
+            children = real_client.get_attachments(item_id=parent_key)
+            assert attachment_key in [c.key for c in children], (
+                f"{attachment_key} is not among the parent's attachments: "
+                f"{[c.key for c in children]}"
+            )
+
+            # And the bytes must come back intact.
+            downloaded = tmp_path / "downloaded.txt"
+            real_client.download_attachment(attachment_key, str(downloaded))
+            assert downloaded.read_bytes() == body
+        finally:
+            # Delete the attachment before its parent. The version must be
+            # supplied: the API requires a precondition on writes and answers
+            # 428 without one, so a bare delete_item() would leak both items.
+            # Cleanup failures are printed rather than raised, so a leak is
+            # visible without masking the test's own result.
+            for key in (attachment_key, parent_key):
+                if not key:
+                    continue
+                try:
+                    real_client.delete_item(key, real_client.get_item(key).version)
+                except Exception as exc:
+                    print(f"CLEANUP FAILED for {key}: {exc}")

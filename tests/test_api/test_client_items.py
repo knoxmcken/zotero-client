@@ -157,51 +157,75 @@ def test_get_items_advanced_search(mock_get, mock_client):
     assert items[0].item_type == "journalArticle"
 
 @patch('requests.get')
-def test_get_attachments(mock_get, mock_client):
+def test_get_attachments_for_item_reads_children(mock_get, mock_client):
+    """An item's attachments come from its children.
+
+    `/items?parentItem=` is silently ignored by the API -- it returns
+    attachments from the whole library, not the named parent -- so the child
+    endpoint is the only correct route. This asserts the resulting items, not
+    merely the outgoing request, because a request-shape assertion is what let
+    the ignored filter pass for so long.
+    """
     mock_response = Mock()
     mock_response.status_code = 200
     mock_response.json.return_value = [{
-        "key": "ATTACHMENT1",
+        "key": "CHILDATTACH1",
         "version": 1,
         "data": {
-            "key": "ATTACHMENT1",
+            "key": "CHILDATTACH1",
             "itemType": "attachment",
-            "title": "Test Attachment",
+            "title": "Child Attachment",
             "parentItem": "PARENTITEM123",
             "creators": [],
             "date": "2024",
             "url": ""
         }
     }]
+    mock_response.raise_for_status.return_value = None
     mock_get.return_value = mock_response
 
-    # Test getting all attachments
+    attachments = mock_client.get_attachments(item_id="PARENTITEM123")
+
+    mock_get.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/PARENTITEM123/children',
+        headers=mock_client.headers,
+        params={'itemType': 'attachment', 'limit': 100, 'start': 0},
+        timeout=mock_client.TIMEOUT,
+    )
+    assert [a.key for a in attachments] == ["CHILDATTACH1"]
+    assert attachments[0].parent_item == "PARENTITEM123"
+
+
+@patch('requests.get')
+def test_get_attachments_library_wide(mock_get, mock_client):
+    """Without an item_id, attachments come from the library as a whole."""
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [{
+        "key": "LIBATTACH1",
+        "version": 1,
+        "data": {
+            "key": "LIBATTACH1",
+            "itemType": "attachment",
+            "title": "Library Attachment",
+            "creators": [],
+            "date": "2024",
+            "url": ""
+        }
+    }]
+    mock_response.raise_for_status.return_value = None
+    mock_get.return_value = mock_response
+
     attachments = mock_client.get_attachments(limit=1)
 
-    expected_params_all = {'itemType': 'attachment', 'limit': 1, 'start': 0}
-    mock_get.assert_called_with(
+    mock_get.assert_called_once_with(
         f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
         headers=mock_client.headers,
-        params=expected_params_all,
+        params={'itemType': 'attachment', 'limit': 1, 'start': 0},
         timeout=mock_client.TIMEOUT,
     )
-    assert len(attachments) == 1
-    assert attachments[0].title == "Test Attachment"
+    assert [a.key for a in attachments] == ["LIBATTACH1"]
     assert attachments[0].item_type == "attachment"
-
-    # Test getting attachments for a specific parent item
-    mock_get.reset_mock()
-    attachments_for_item = mock_client.get_attachments(item_id="PARENTITEM123")
-
-    expected_params_item = {'itemType': 'attachment', 'parentItem': 'PARENTITEM123', 'limit': 100, 'start': 0}
-    mock_get.assert_called_with(
-        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items',
-        headers=mock_client.headers,
-        params=expected_params_item,
-        timeout=mock_client.TIMEOUT,
-    )
-    assert len(attachments_for_item) == 1
-    assert attachments_for_item[0].parent_item == "PARENTITEM123"
 
 @patch('requests.post')
 @patch('requests.get')
@@ -276,9 +300,9 @@ def test_upload_attachment_follows_documented_flow(mock_get, mock_post, mock_cli
     uploaded = mock_client.upload_attachment(parent_item_id, str(file_path), title)
 
     mock_get.assert_any_call(
-        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/items/new',
+        f'{mock_client.BASE_URL}/items/new',
         headers=mock_client.headers,
-        params={'itemType': 'attachment', 'linkMode': 'imported_file', 'parentItem': parent_item_id},
+        params={'itemType': 'attachment', 'linkMode': 'imported_file'},
         timeout=mock_client.TIMEOUT,
     )
 
