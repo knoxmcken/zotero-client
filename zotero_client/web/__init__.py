@@ -74,6 +74,7 @@ def create_app(debug=False):
     from zotero_client.web.routes.items import items_bp
     from zotero_client.web.routes.collections import collections_bp
     from zotero_client.web.routes.tags import tags_bp
+    from zotero_client.web.csrf import register_csrf
     from zotero_client.web.security import register_shared_guards
 
     app.register_blueprint(items_bp)
@@ -82,6 +83,8 @@ def create_app(debug=False):
 
     # One guard for every endpoint, so a new blueprint cannot skip it.
     register_shared_guards(app)
+    # CSRF validation for state-changing requests, after the credential guard.
+    register_csrf(app)
 
     @app.errorhandler(404)
     def not_found(e):

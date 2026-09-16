@@ -59,6 +59,9 @@ def item_detail(item_id):
 
 @items_bp.route('/items/<item_id>/delete', methods=['POST'])
 def delete_item(item_id):
+    # Destructive write: the CSRF token is validated centrally for every
+    # state-changing request in zotero_client.web.csrf (see the threat model
+    # note there). The confirmation modal in items/detail.html supplies it.
     client = get_client(current_app)
     try:
         client.delete_item(item_id)

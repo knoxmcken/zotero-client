@@ -115,18 +115,26 @@ class TestItemDetail:
 
 
 class TestDeleteItem:
-    def test_delete_redirects_to_list(self, client):
+    def test_delete_redirects_to_list(self, client, csrf_token):
         with patch('zotero_client.web.routes.items.get_client') as mock_gc:
             mock_gc.return_value.delete_item.return_value = None
-            resp = client.post('/items/ABC123/delete')
+            resp = client.post('/items/ABC123/delete', data={'csrf_token': csrf_token})
         assert resp.status_code == 302
         assert '/items' in resp.headers['Location']
 
-    def test_delete_calls_api(self, client):
+    def test_delete_calls_api(self, client, csrf_token):
         with patch('zotero_client.web.routes.items.get_client') as mock_gc:
             mock_gc.return_value.delete_item.return_value = None
-            client.post('/items/ABC123/delete')
+            client.post('/items/ABC123/delete', data={'csrf_token': csrf_token})
             mock_gc.return_value.delete_item.assert_called_once_with('ABC123')
+
+    def test_delete_without_token_is_rejected(self, client):
+        with patch('zotero_client.web.routes.items.get_client') as mock_gc:
+            mock_gc.return_value.delete_item.return_value = None
+            resp = client.post('/items/ABC123/delete')
+        assert resp.status_code == 400
+        assert b'CSRF' in resp.data
+        mock_gc.return_value.delete_item.assert_not_called()
 
     def test_delete_503_when_no_creds(self, client_no_creds):
         resp = client_no_creds.post('/items/ABC123/delete')
