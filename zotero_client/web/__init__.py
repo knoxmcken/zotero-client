@@ -86,6 +86,12 @@ def create_app(debug=False):
     # CSRF validation for state-changing requests, after the credential guard.
     register_csrf(app)
 
+    # Deliberately not in PUBLIC_ENDPOINTS: without credentials the guard answers
+    # 503, so a misconfigured deployment fails its platform healthcheck.
+    @app.route('/healthz')
+    def healthz():
+        return {'status': 'ok'}
+
     @app.errorhandler(404)
     def not_found(e):
         return render_template('error.html', code=404, message='Page not found.'), 404
