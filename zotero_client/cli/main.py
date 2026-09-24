@@ -282,16 +282,30 @@ def _build_collection_tree(collections: List[Collection]) -> Tree:
     """
     Arrange a flat list of collections into a rich Tree based on
     parent_collection relationships. A collection whose parent_collection
-    key isn't present among the fetched collections is treated as a root,
-    rather than silently dropped.
+    key isn't present among the fetched collections, or whose ancestor
+    chain loops back on itself (self-referential or mutual parents), is
+    treated as a root, rather than silently dropped.
     """
     by_key = {c.key: c for c in collections}
+
+    def resolve_parent(collection: Collection) -> Optional[str]:
+        parent = collection.parent_collection
+        if parent in (None, '') or parent not in by_key:
+            return None
+        seen = {collection.key}
+        current = parent
+        while True:
+            if current in seen:
+                return None  # cycle detected among ancestors
+            seen.add(current)
+            next_parent = by_key[current].parent_collection
+            if next_parent in (None, '') or next_parent not in by_key:
+                return parent
+            current = next_parent
+
     children_by_parent: Dict[Optional[str], List[Collection]] = {}
     for c in collections:
-        parent = c.parent_collection
-        if parent not in (None, '') and parent not in by_key:
-            parent = None
-        children_by_parent.setdefault(parent, []).append(c)
+        children_by_parent.setdefault(resolve_parent(c), []).append(c)
 
     root = Tree("Zotero Collections")
 
