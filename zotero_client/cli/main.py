@@ -56,8 +56,9 @@ def list_items(args):
     """
     api_key, user_id, openai_api_key = load_config()
     client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
-    
-    items = client.get_items(
+
+    collection_id = getattr(args, 'collection', None)
+    common_kwargs = dict(
         limit=args.limit,
         q=args.query,
         qmode=args.qmode,
@@ -65,7 +66,11 @@ def list_items(args):
         tag=args.tag,
         include_trashed=getattr(args, 'include_trashed', None)
     )
-    
+    if collection_id:
+        items = client.get_collection_items(collection_id, **common_kwargs)
+    else:
+        items = client.get_items(**common_kwargs)
+
     table = Table(title="Zotero Items")
     table.add_column("Item Type", style="cyan")
     table.add_column("Title", style="magenta")
@@ -453,6 +458,12 @@ def build_parser():
         '--include-trashed',
         action='store_true',
         help='Include trashed items in the results'
+    )
+    list_items_parser.add_argument(
+        '--collection', '-c',
+        type=str,
+        default=None,
+        help='Filter items to a single collection (by collection key)'
     )
     list_items_parser.set_defaults(func=list_items)
 

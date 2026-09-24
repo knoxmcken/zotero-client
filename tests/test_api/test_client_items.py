@@ -199,6 +199,82 @@ def test_get_items_advanced_search(mock_get, mock_client):
     assert items[0].item_type == "journalArticle"
 
 @patch('requests.get')
+def test_get_collection_items(mock_get, mock_client):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [{
+        "key": "COLLECTIONITEM1",
+        "version": 1,
+        "data": {
+            "key": "COLLECTIONITEM1",
+            "itemType": "journalArticle",
+            "title": "Collection Article",
+            "creators": [],
+            "date": "2021",
+            "url": ""
+        }
+    }]
+    mock_get.return_value = mock_response
+
+    items = mock_client.get_collection_items("COLLECTION1")
+
+    mock_get.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections/COLLECTION1/items',
+        headers=mock_client.headers,
+        params={'limit': 100, 'start': 0},
+        timeout=mock_client.TIMEOUT,
+    )
+    assert len(items) == 1
+    assert items[0].title == "Collection Article"
+
+@patch('requests.get')
+def test_get_collection_items_with_filters(mock_get, mock_client):
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [{
+        "key": "COLLECTIONITEM2",
+        "version": 1,
+        "data": {
+            "key": "COLLECTIONITEM2",
+            "itemType": "book",
+            "title": "Filtered Collection Book",
+            "creators": [],
+            "date": "2022",
+            "url": ""
+        }
+    }]
+    mock_get.return_value = mock_response
+
+    items = mock_client.get_collection_items(
+        "COLLECTION1",
+        limit=5,
+        q="search term",
+        qmode="everything",
+        item_type="book",
+        tag="biology",
+        include_trashed=True
+    )
+
+    expected_params = {
+        'q': "search term",
+        'qmode': "everything",
+        'itemType': "book",
+        'tag': "biology",
+        'includeTrashed': 1,
+        'limit': 5,
+        'start': 0
+    }
+
+    mock_get.assert_called_once_with(
+        f'{mock_client.BASE_URL}/{mock_client.library_type}/{mock_client.user_id}/collections/COLLECTION1/items',
+        headers=mock_client.headers,
+        params=expected_params,
+        timeout=mock_client.TIMEOUT,
+    )
+    assert len(items) == 1
+    assert items[0].title == "Filtered Collection Book"
+
+@patch('requests.get')
 def test_get_attachments_for_item_reads_children(mock_get, mock_client):
     """An item's attachments come from its children.
 

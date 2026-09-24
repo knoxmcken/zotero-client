@@ -161,6 +161,41 @@ class ZoteroClient:
             for item_data in self._get_pages(url, params, limit)
         ]
     
+    def get_collection_items(self, collection_id: str, limit: Optional[int] = None, q: Optional[str] = None, qmode: Optional[str] = None, item_type: Optional[str] = None, tag: Optional[str] = None, include_trashed: Optional[bool] = None) -> List[Item]:
+        """
+        Retrieve items belonging to a specific collection.
+
+        Args:
+            collection_id: The collection key to filter items by.
+            limit: Maximum number of items to retrieve; None retrieves all
+                matching items, following pagination.
+            q: Search query for quick search across titles and creator fields.
+            qmode: Query mode for 'q' parameter (e.g., 'everything' for full-text search).
+            item_type: Filter by item type (e.g., 'book', 'journalArticle').
+            tag: Filter by tag (supports boolean search syntax).
+            include_trashed: If True, include trashed items in the results.
+
+        Returns:
+            List of Item objects belonging to the collection.
+        """
+        url = f'{self.BASE_URL}/{self.library_type}/{self.user_id}/collections/{collection_id}/items'
+        params = {}
+        if q:
+            params['q'] = q
+        if qmode:
+            params['qmode'] = qmode
+        if item_type:
+            params['itemType'] = item_type
+        if tag:
+            params['tag'] = tag
+        if include_trashed:
+            params['includeTrashed'] = 1
+
+        return [
+            Item.from_api_response(item_data)
+            for item_data in self._get_pages(url, params, limit)
+        ]
+
     def get_item(self, item_id: str) -> Item:
         """
         Retrieve a specific item by ID.

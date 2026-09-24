@@ -23,7 +23,8 @@ def test_list_items_with_search_parameters(mock_zotero_client, mock_load_config,
         qmode="everything",
         item_type="journalArticle",
         tag="biology",
-        include_trashed=True
+        include_trashed=True,
+        collection=None
     )
 
     with patch('zotero_client.cli.main.console.print') as mock_print:
@@ -38,6 +39,7 @@ def test_list_items_with_search_parameters(mock_zotero_client, mock_load_config,
         tag="biology",
         include_trashed=True
     )
+    mock_client_with_items.get_collection_items.assert_not_called()
     mock_print.assert_called_once()
     assert isinstance(mock_print.call_args[0][0], Table)
 
@@ -53,7 +55,8 @@ def test_list_items_no_search_parameters(mock_zotero_client, mock_load_config, m
         qmode=None,
         item_type=None,
         tag=None,
-        include_trashed=False
+        include_trashed=False,
+        collection=None
     )
 
     with patch('zotero_client.cli.main.console.print') as mock_print:
@@ -68,6 +71,41 @@ def test_list_items_no_search_parameters(mock_zotero_client, mock_load_config, m
         tag=None,
         include_trashed=False
     )
+    mock_client_with_items.get_collection_items.assert_not_called()
+    mock_print.assert_called_once()
+    assert isinstance(mock_print.call_args[0][0], Table)
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+def test_list_items_filtered_by_collection(mock_zotero_client, mock_load_config, mock_client_with_items):
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    mock_client_with_items.get_collection_items.return_value = mock_client_with_items.get_items.return_value
+    mock_zotero_client.return_value = mock_client_with_items
+
+    mock_args = MagicMock(
+        limit=None,
+        query=None,
+        qmode=None,
+        item_type=None,
+        tag=None,
+        include_trashed=False,
+        collection="COLLECTION1"
+    )
+
+    with patch('zotero_client.cli.main.console.print') as mock_print:
+        list_items(mock_args)
+
+    mock_zotero_client.assert_called_once_with("test_api_key", "test_user_id", openai_api_key="test_openai_key")
+    mock_client_with_items.get_collection_items.assert_called_once_with(
+        "COLLECTION1",
+        limit=None,
+        q=None,
+        qmode=None,
+        item_type=None,
+        tag=None,
+        include_trashed=False
+    )
+    mock_client_with_items.get_items.assert_not_called()
     mock_print.assert_called_once()
     assert isinstance(mock_print.call_args[0][0], Table)
 
