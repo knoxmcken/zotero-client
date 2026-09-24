@@ -74,7 +74,9 @@ zotero-client/
 ├── .github/workflows/
 │   ├── integration-test.yml
 │   └── deploy-cloud-run.yml # Manual (workflow_dispatch) deploy of the web UI to Cloud Run
-├── Procfile                 # Gunicorn entrypoint for the web UI
+├── deploy/                  # Platform-specific deployment config, one subdirectory per platform
+│   └── cloud-run/
+│       └── Procfile         # Gunicorn entrypoint; read by deploy-cloud-run.yml, not auto-detected
 ├── pyproject.toml
 ├── requirements.txt
 ├── pytest.ini
@@ -106,7 +108,7 @@ The codebase follows a strict four-layer architecture. Respect these boundaries 
 
 ## Web UI (`zotero_client/web/`)
 
-A Flask application that browses the same Zotero library as the CLI, served with `zot web` locally or via Gunicorn in deployment (see `Procfile`).
+A Flask application that browses the same Zotero library as the CLI, served with `zot web` locally or via Gunicorn in deployment (see `deploy/cloud-run/Procfile`).
 
 - **`create_app(debug=False)`** in `web/__init__.py` is the application factory. It resolves the session signing key, loads Zotero/OpenAI credentials via `load_environment()`, registers the resource blueprints, then the shared guards.
 - **Session secret key** (`FLASK_SECRET_KEY`): required in production; `create_app` raises `RuntimeError` at startup if it's unset and `debug` is `False`, rather than silently signing cookies with a value baked into the source tree. Debug mode (`zot web --debug`) generates a random per-process key instead.
@@ -117,7 +119,11 @@ A Flask application that browses the same Zotero library as the CLI, served with
 - Templates live in `web/templates/` (Jinja2): `base.html`, `error.html`, and per-resource `list.html`/`detail.html` under `items/`, `collections/`, `tags/`.
 - Tests in `tests/test_web/` use Flask's test client — no real HTTP or Zotero credentials required. `conftest.py` provides the fixtures; patch `ZoteroClient` methods there the same way CLI tests patch `load_config`.
 
-**Deployment**: `.github/workflows/deploy-cloud-run.yml` is a manual (`workflow_dispatch`) job that deploys to Google Cloud Run from source, writes runtime env vars (`ZOTERO_API_KEY`, `ZOTERO_USER_ID`, `FLASK_SECRET_KEY`, `ZOTERO_LIBRARY_TYPE`) via a generated env file (avoids `--set-env-vars` splitting on commas), then polls `/healthz` to confirm the deploy succeeded. Required GitHub Secrets: `GCP_PROJECT_ID`, `GCP_SA_KEY`, plus the Zotero/Flask secrets above. The project previously deployed to Railway (`railway.toml`); that config was removed in favor of Cloud Run, though `Procfile` (Gunicorn entrypoint) remains in use.
+**Deployment**: all platform-specific deployment files live under `deploy/<platform>/` rather than the repo root (a GitHub Actions workflow is the one exception — GitHub only picks those up from `.github/workflows/`, so `deploy-cloud-run.yml` stays there and reaches into `deploy/cloud-run/` for its config).
+
+- **Cloud Run** (`deploy/cloud-run/Procfile`): `.github/workflows/deploy-cloud-run.yml` is a manual (`workflow_dispatch`) job that deploys to Google Cloud Run from source. Since Buildpacks only auto-detect a `Procfile` at the source root, the workflow reads `deploy/cloud-run/Procfile` itself and passes its command to Buildpacks via `--set-build-env-vars GOOGLE_ENTRYPOINT=...`. It writes runtime env vars (`ZOTERO_API_KEY`, `ZOTERO_USER_ID`, `FLASK_SECRET_KEY`, `ZOTERO_LIBRARY_TYPE`) via a generated env file (avoids `--set-env-vars` splitting on commas), then polls `/healthz` to confirm the deploy succeeded. Required GitHub Secrets: `GCP_PROJECT_ID`, `GCP_SA_KEY`, plus the Zotero/Flask secrets above.
+- **Railway** (`deploy/railway/railway.toml`, branch `feat/railway-deployment`, not merged to `main`): superseded by Cloud Run. Railway's dashboard "Root Directory" / config-as-code path setting would need to point at `deploy/railway` for this file to be picked up automatically.
+- **Vercel** (`deploy/vercel/vercel.json` + `deploy/vercel/api/index.py`, branch `vercel-deployment`, not merged to `main`): Vercel's Python runtime calls the `app` WSGI object in `api/index.py` per-request rather than running a Procfile command. Because the config lives under `deploy/vercel/` instead of the repo root, Vercel's project "Root Directory" must be set to `deploy/vercel`, with "Include files outside the Root Directory in the Build Step" enabled so the build can still reach the `zotero_client` package.
 
 ---
 

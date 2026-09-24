@@ -65,10 +65,15 @@ jobs:
 
       - name: Deploy from source
         run: |
+          # Buildpacks only auto-detect a Procfile at the source root, and ours
+          # lives in deploy/cloud-run/ to keep the repo root uncluttered, so its
+          # start command is passed explicitly via GOOGLE_ENTRYPOINT instead.
+          entrypoint=$(sed -n 's/^web: //p' deploy/cloud-run/Procfile)
           gcloud run deploy "$SERVICE" \
             --source . \
             --region "$REGION" \
             --allow-unauthenticated \
+            --set-build-env-vars "GOOGLE_ENTRYPOINT=$entrypoint" \
             --env-vars-file "$RUNNER_TEMP/env.yaml" \
             --quiet
 
