@@ -9,10 +9,10 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.tree import Tree
 from rich.panel import Panel
-from typing import Dict, List, Optional
+from typing import List, Optional
 from dotenv import load_dotenv, set_key
 from zotero_client.api.client import ZoteroClient
-from zotero_client.models.collection import Collection
+from zotero_client.models.collection import Collection, group_collections_by_parent
 
 console = Console()
 
@@ -280,32 +280,10 @@ def list_attachments(args):
 
 def _build_collection_tree(collections: List[Collection]) -> Tree:
     """
-    Arrange a flat list of collections into a rich Tree based on
-    parent_collection relationships. A collection whose parent_collection
-    key isn't present among the fetched collections, or whose ancestor
-    chain loops back on itself (self-referential or mutual parents), is
-    treated as a root, rather than silently dropped.
+    Render a flat list of collections as a rich Tree, grouped by
+    parent_collection via group_collections_by_parent().
     """
-    by_key = {c.key: c for c in collections}
-
-    def resolve_parent(collection: Collection) -> Optional[str]:
-        parent = collection.parent_collection
-        if parent in (None, '') or parent not in by_key:
-            return None
-        seen = {collection.key}
-        current = parent
-        while True:
-            if current in seen:
-                return None  # cycle detected among ancestors
-            seen.add(current)
-            next_parent = by_key[current].parent_collection
-            if next_parent in (None, '') or next_parent not in by_key:
-                return parent
-            current = next_parent
-
-    children_by_parent: Dict[Optional[str], List[Collection]] = {}
-    for c in collections:
-        children_by_parent.setdefault(resolve_parent(c), []).append(c)
+    children_by_parent = group_collections_by_parent(collections)
 
     root = Tree("Zotero Collections")
 
