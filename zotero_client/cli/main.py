@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 import json
+import requests
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
@@ -50,6 +51,34 @@ def configure_cli(args):
         console.print("[italic]Please restart your shell or run 'load_dotenv()' if you are in an interactive session.[/]")
 
 
+def _resolve_collection_key(client, value):
+    """Resolve a --collection value that may be a collection key or display name.
+
+    Zotero collection keys are unique within a library, but names are not (two
+    collections, especially at different nesting levels, may share a name), so
+    an ambiguous name raises rather than silently picking one.
+    """
+    collections = client.get_collections()
+
+    for collection in collections:
+        if collection.key == value:
+            return collection.key
+
+    matches = [c for c in collections if c.name.lower() == value.lower()]
+    if not matches:
+        raise ValueError(
+            f"no collection found with key or name '{value}'. "
+            "Run 'zot collections list' to see available collections."
+        )
+    if len(matches) > 1:
+        keys = ', '.join(c.key for c in matches)
+        raise ValueError(
+            f"multiple collections are named '{value}' (keys: {keys}). "
+            "Pass the exact collection key instead."
+        )
+    return matches[0].key
+
+
 def list_items(args):
     """
     List items from Zotero library with optional search filters.
@@ -67,7 +96,13 @@ def list_items(args):
         include_trashed=getattr(args, 'include_trashed', None)
     )
     if collection_id:
-        items = client.get_collection_items(collection_id, **common_kwargs)
+        try:
+            collection_key = _resolve_collection_key(client, collection_id)
+            items = client.get_collection_items(collection_key, **common_kwargs)
+        except (ValueError, requests.exceptions.HTTPError) as e:
+            console.print(f"[bold red]Error listing items for collection '{collection_id}':[/] {e}")
+            sys.exit(1)
+            return
     else:
         items = client.get_items(**common_kwargs)
 

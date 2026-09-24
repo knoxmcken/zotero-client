@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from zotero_client.cli.main import list_items, find_duplicates_cli, list_attachments
 from zotero_client.models.item import Item
+from zotero_client.models.collection import Collection
 from rich.table import Table
 
 @pytest.fixture
@@ -77,8 +78,11 @@ def test_list_items_no_search_parameters(mock_zotero_client, mock_load_config, m
 
 @patch('zotero_client.cli.main.load_config')
 @patch('zotero_client.cli.main.ZoteroClient')
-def test_list_items_filtered_by_collection(mock_zotero_client, mock_load_config, mock_client_with_items):
+def test_list_items_filtered_by_collection_key(mock_zotero_client, mock_load_config, mock_client_with_items):
     mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    mock_client_with_items.get_collections.return_value = [
+        Collection(key="COLLECTION1", name="Networking", version=1)
+    ]
     mock_client_with_items.get_collection_items.return_value = mock_client_with_items.get_items.return_value
     mock_zotero_client.return_value = mock_client_with_items
 
@@ -108,6 +112,99 @@ def test_list_items_filtered_by_collection(mock_zotero_client, mock_load_config,
     mock_client_with_items.get_items.assert_not_called()
     mock_print.assert_called_once()
     assert isinstance(mock_print.call_args[0][0], Table)
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+def test_list_items_filtered_by_collection_name(mock_zotero_client, mock_load_config, mock_client_with_items):
+    """--collection also accepts a display name, resolved to its key via get_collections()."""
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    mock_client_with_items.get_collections.return_value = [
+        Collection(key="NETKEY01", name="Networking", version=1)
+    ]
+    mock_client_with_items.get_collection_items.return_value = mock_client_with_items.get_items.return_value
+    mock_zotero_client.return_value = mock_client_with_items
+
+    mock_args = MagicMock(
+        limit=None,
+        query=None,
+        qmode=None,
+        item_type=None,
+        tag=None,
+        include_trashed=False,
+        collection="Networking"
+    )
+
+    with patch('zotero_client.cli.main.console.print') as mock_print:
+        list_items(mock_args)
+
+    mock_client_with_items.get_collection_items.assert_called_once_with(
+        "NETKEY01",
+        limit=None,
+        q=None,
+        qmode=None,
+        item_type=None,
+        tag=None,
+        include_trashed=False
+    )
+    mock_print.assert_called_once()
+    assert isinstance(mock_print.call_args[0][0], Table)
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+@patch('sys.exit')
+def test_list_items_collection_not_found(mock_exit, mock_zotero_client, mock_load_config, mock_client_with_items):
+    """An unknown --collection value reports a clean error instead of a raw traceback."""
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    mock_client_with_items.get_collections.return_value = [
+        Collection(key="NETKEY01", name="Networking", version=1)
+    ]
+    mock_zotero_client.return_value = mock_client_with_items
+
+    mock_args = MagicMock(
+        limit=None,
+        query=None,
+        qmode=None,
+        item_type=None,
+        tag=None,
+        include_trashed=False,
+        collection="Nonexistent"
+    )
+
+    with patch('zotero_client.cli.main.console.print') as mock_print:
+        list_items(mock_args)
+
+    mock_client_with_items.get_collection_items.assert_not_called()
+    mock_exit.assert_called_once_with(1)
+    assert "no collection found" in mock_print.call_args[0][0]
+
+@patch('zotero_client.cli.main.load_config')
+@patch('zotero_client.cli.main.ZoteroClient')
+@patch('sys.exit')
+def test_list_items_collection_name_ambiguous(mock_exit, mock_zotero_client, mock_load_config, mock_client_with_items):
+    """Two collections sharing a name must not be resolved arbitrarily."""
+    mock_load_config.return_value = ("test_api_key", "test_user_id", "test_openai_key")
+    mock_client_with_items.get_collections.return_value = [
+        Collection(key="NETKEY01", name="Networking", version=1),
+        Collection(key="NETKEY02", name="Networking", version=1),
+    ]
+    mock_zotero_client.return_value = mock_client_with_items
+
+    mock_args = MagicMock(
+        limit=None,
+        query=None,
+        qmode=None,
+        item_type=None,
+        tag=None,
+        include_trashed=False,
+        collection="Networking"
+    )
+
+    with patch('zotero_client.cli.main.console.print') as mock_print:
+        list_items(mock_args)
+
+    mock_client_with_items.get_collection_items.assert_not_called()
+    mock_exit.assert_called_once_with(1)
+    assert "multiple collections" in mock_print.call_args[0][0]
 
 @pytest.fixture
 def mock_client_with_attachments():
