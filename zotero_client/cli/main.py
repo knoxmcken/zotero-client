@@ -7,9 +7,12 @@ import json
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
+from rich.tree import Tree
 from rich.panel import Panel
+from typing import List, Optional
 from dotenv import load_dotenv, set_key
 from zotero_client.api.client import ZoteroClient
+from zotero_client.models.collection import Collection, group_collections_by_parent
 
 console = Console()
 
@@ -275,21 +278,43 @@ def list_attachments(args):
     console.print(table)
 
 
+def _build_collection_tree(collections: List[Collection]) -> Tree:
+    """
+    Render a flat list of collections as a rich Tree, grouped by
+    parent_collection via group_collections_by_parent().
+    """
+    children_by_parent = group_collections_by_parent(collections)
+
+    root = Tree("Zotero Collections")
+
+    def add_children(node: Tree, parent_key: Optional[str]):
+        for collection in sorted(children_by_parent.get(parent_key, []), key=lambda c: c.name):
+            child_node = node.add(f"{collection.name} [magenta]({collection.key})[/]")
+            add_children(child_node, collection.key)
+
+    add_children(root, None)
+    return root
+
+
 def list_collections(args):
     """
     List collections from Zotero library."""
     api_key, user_id, openai_api_key = load_config()
     client = ZoteroClient(api_key, user_id, openai_api_key=openai_api_key)
-    
+
     collections = client.get_collections()
-    
+
+    if getattr(args, 'tree', False):
+        console.print(_build_collection_tree(collections))
+        return
+
     table = Table(title="Zotero Collections")
     table.add_column("Collection Name", style="cyan")
     table.add_column("Key", style="magenta")
-    
+
     for collection in collections:
         table.add_row(collection.name, collection.key)
-        
+
     console.print(table)
 
 
@@ -510,6 +535,11 @@ def build_parser():
 
     # List collections sub-command
     list_collections_parser = collections_subparsers.add_parser('list', help='List collections from library')
+    list_collections_parser.add_argument(
+        '--tree', '-t',
+        action='store_true',
+        help='Display collections as a nested tree based on parent-child relationships'
+    )
     list_collections_parser.set_defaults(func=list_collections)
 
     # Create collection sub-command
