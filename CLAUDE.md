@@ -27,8 +27,17 @@ zotero-client/
 │   │   ├── item.py         # Item dataclass + from_api_response()
 │   │   ├── collection.py   # Collection dataclass + from_api_response()
 │   │   └── tag.py          # Tag dataclass + from_api_response()
-│   └── utils/
-│       └── config.py       # load_config() — reads env vars / .env file
+│   ├── utils/
+│   │   └── config.py       # load_config() — reads env vars / .env file
+│   └── web/                # Flask web UI (browses the same ZoteroClient)
+│       ├── __init__.py     # create_app() factory, secret-key handling, /healthz
+│       ├── security.py     # register_shared_guards() — app-wide credential gate
+│       ├── csrf.py         # register_csrf() — session-backed CSRF validation
+│       ├── routes/
+│       │   ├── items.py        # items_bp blueprint
+│       │   ├── collections.py  # collections_bp blueprint
+│       │   └── tags.py         # tags_bp blueprint
+│       └── templates/      # Jinja2 templates (base.html, items/, collections/, tags/, error.html)
 ├── tests/
 │   ├── test_client.py      # General ZoteroClient tests
 │   ├── test_api/           # Per-feature API client tests
@@ -41,9 +50,19 @@ zotero-client/
 │   │   ├── test_items.py
 │   │   ├── test_export.py
 │   │   └── test_configure.py
-│   └── test_models/        # Data model tests
-│       ├── test_item.py
-│       └── test_collection.py
+│   ├── test_models/        # Data model tests
+│   │   ├── test_item.py
+│   │   └── test_collection.py
+│   └── test_web/           # Web UI tests (Flask test client, no real HTTP)
+│       ├── conftest.py
+│       ├── test_items.py
+│       ├── test_collections.py
+│       ├── test_tags.py
+│       ├── test_csrf.py
+│       ├── test_credentials_guard.py
+│       ├── test_secret_key.py
+│       ├── test_healthz.py
+│       └── test_packaged_templates.py
 ├── examples/
 │   ├── basic_usage.py
 │   └── jupyter/zotero_analysis.ipynb
@@ -53,7 +72,9 @@ zotero-client/
 │   ├── FEATURES.md
 │   └── IMPLEMENTATION_PLAN.md
 ├── .github/workflows/
-│   └── integration-test.yml
+│   ├── integration-test.yml
+│   └── deploy-cloud-run.yml # Manual (workflow_dispatch) deploy of the web UI to Cloud Run
+├── Procfile                 # Gunicorn entrypoint for the web UI
 ├── pyproject.toml
 ├── requirements.txt
 ├── pytest.ini
@@ -72,12 +93,31 @@ The codebase follows a strict four-layer architecture. Respect these boundaries 
 | **API** | `zotero_client/api/client.py` | HTTP calls, auth headers, response parsing — no business logic |
 | **Models** | `zotero_client/models/` | Dataclasses with `from_api_response()` factory methods |
 | **CLI** | `zotero_client/cli/main.py` | User input parsing (argparse), calls API/service layer, Rich formatting |
+| **Web** | `zotero_client/web/` | Flask UI over the same `ZoteroClient` — blueprints per resource, no business logic |
 | **Utils** | `zotero_client/utils/config.py` | Environment/config loading |
 
 - `ZoteroClient` in `api/client.py` is the **single point of contact** with the Zotero REST API (`https://api.zotero.org`).
 - Models use Python `dataclasses`. Each model has a `from_api_response(data: dict)` classmethod.
 - The CLI uses `argparse` (not `click`). Output is formatted using the `rich` library (tables, panels).
+- The web UI is a separate presentation layer (`zot web`), not a wrapper around the CLI — its route blueprints call `ZoteroClient` directly, the same way `cli/main.py` does.
 - `load_config()` in `utils/config.py` reads `ZOTERO_API_KEY`, `ZOTERO_USER_ID`, and `ZOTERO_LIBRARY_TYPE` from the environment or a `.env` file.
+
+---
+
+## Web UI (`zotero_client/web/`)
+
+A Flask application that browses the same Zotero library as the CLI, served with `zot web` locally or via Gunicorn in deployment (see `Procfile`).
+
+- **`create_app(debug=False)`** in `web/__init__.py` is the application factory. It resolves the session signing key, loads Zotero/OpenAI credentials via `load_environment()`, registers the resource blueprints, then the shared guards.
+- **Session secret key** (`FLASK_SECRET_KEY`): required in production; `create_app` raises `RuntimeError` at startup if it's unset and `debug` is `False`, rather than silently signing cookies with a value baked into the source tree. Debug mode (`zot web --debug`) generates a random per-process key instead.
+- **Credential gate** (`web/security.py`): `register_shared_guards()` installs an app-wide `before_request` hook that returns 503 for every endpoint except `static` when `ZOTERO_API_KEY`/`ZOTERO_USER_ID` are missing. It runs before CSRF validation so a credential-less deployment reports the actionable 503, not a generic 400. `/healthz` is deliberately **not** exempted — a misconfigured deployment should fail its own platform healthcheck rather than report healthy.
+- **CSRF** (`web/csrf.py`): stdlib-only (`secrets` + `hmac.compare_digest`), session-backed token required on every state-changing request (anything but `GET`/`HEAD`/`OPTIONS`/`TRACE`), via a form field (`csrf_token`) or header (`X-CSRF-Token`). This app treats every visitor who can reach the port as the authenticated operator (credentials are server-side, not per-session), so CSRF is enforced explicitly rather than relied on via cookie `SameSite` defaults.
+- **Route blueprints** (`web/routes/`) mirror the CLI's resources: `items_bp`, `collections_bp`, `tags_bp`. Each calls `get_client(app)` (a `ZoteroClient` built from `app.config`) directly — same rule as the CLI: no business logic in the route handlers.
+- **`/healthz`**: unauthenticated JSON `{"status": "ok"}`, used by the Cloud Run deploy workflow's post-deploy verification. Registered directly on `app`, outside the blueprints, so it's exempt from CSRF but still subject to the credential gate (see above).
+- Templates live in `web/templates/` (Jinja2): `base.html`, `error.html`, and per-resource `list.html`/`detail.html` under `items/`, `collections/`, `tags/`.
+- Tests in `tests/test_web/` use Flask's test client — no real HTTP or Zotero credentials required. `conftest.py` provides the fixtures; patch `ZoteroClient` methods there the same way CLI tests patch `load_config`.
+
+**Deployment**: `.github/workflows/deploy-cloud-run.yml` is a manual (`workflow_dispatch`) job that deploys to Google Cloud Run from source, writes runtime env vars (`ZOTERO_API_KEY`, `ZOTERO_USER_ID`, `FLASK_SECRET_KEY`, `ZOTERO_LIBRARY_TYPE`) via a generated env file (avoids `--set-env-vars` splitting on commas), then polls `/healthz` to confirm the deploy succeeded. Required GitHub Secrets: `GCP_PROJECT_ID`, `GCP_SA_KEY`, plus the Zotero/Flask secrets above. The project previously deployed to Railway (`railway.toml`); that config was removed in favor of Cloud Run, though `Procfile` (Gunicorn entrypoint) remains in use.
 
 ---
 
@@ -174,6 +214,9 @@ zot export [--format FORMAT] [--output FILE]
 
 # Configuration
 zot configure
+
+# Web UI
+zot web [--host HOST] [--port PORT] [--debug]
 ```
 
 ---
@@ -243,14 +286,16 @@ Triggers on push/PR to `main` and `develop`.
 
 4. **Mock `load_config` in CLI tests.** CLI commands call `load_config()` at startup; patch it so tests don't require a `.env` file.
 
-5. **Use Rich for CLI output.** All terminal output should use `rich` tables, panels, or `print`. Don't use bare `print()` for user-facing output.
+5. **Same rule for the web UI.** `create_app()` calls `load_environment()` at startup; web tests (`tests/test_web/`) patch it and use Flask's test client rather than making real HTTP or Zotero calls. Keep route handlers in `web/routes/` free of business logic — they should call `ZoteroClient` directly, same as CLI commands do.
 
-6. **Follow conventional commits.** All commit messages must use a type prefix (`feat:`, `fix:`, `docs:`, etc.) with an imperative subject line.
+6. **Use Rich for CLI output.** All terminal output should use `rich` tables, panels, or `print`. Don't use bare `print()` for user-facing output.
 
-7. **Run unit tests before committing.** `pytest tests/ -m "not integration"` must pass. Integration tests need real credentials and are only run in CI.
+7. **Follow conventional commits.** All commit messages must use a type prefix (`feat:`, `fix:`, `docs:`, etc.) with an imperative subject line.
 
-8. **Don't add a `services/` layer yet.** The architecture doc mentions a `services/` layer, but it hasn't been implemented — AI features are currently handled directly in `api/client.py`.
+8. **Run unit tests before committing.** `pytest tests/ -m "not integration"` must pass. Integration tests need real credentials and are only run in CI.
 
-9. **The `.env` file is gitignored.** Never commit real credentials. Use `.env.example` as the template.
+9. **Don't add a `services/` layer yet.** The architecture doc mentions a `services/` layer, but it hasn't been implemented — AI features are currently handled directly in `api/client.py`.
 
-10. **Python >= 3.8 compatibility.** Avoid syntax or stdlib features that require Python 3.9+ (e.g., `dict | dict` union syntax, `list[str]` type hints in function signatures — use `List[str]` from `typing` instead).
+10. **The `.env` file is gitignored.** Never commit real credentials. Use `.env.example` as the template.
+
+11. **Python >= 3.8 compatibility.** Avoid syntax or stdlib features that require Python 3.9+ (e.g., `dict | dict` union syntax, `list[str]` type hints in function signatures — use `List[str]` from `typing` instead).
