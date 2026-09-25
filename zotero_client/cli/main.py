@@ -498,7 +498,7 @@ def build_parser():
         '--collection', '-c',
         type=str,
         default=None,
-        help='Filter items to a single collection (by collection key)'
+        help='Filter items to a single collection (by collection key or name)'
     )
     list_items_parser.set_defaults(func=list_items)
 
